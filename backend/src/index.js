@@ -15,7 +15,7 @@ import {
   verifyGoogleAccessToken,
   verifyGoogleToken,
 } from "./auth.js";
-import { moderateStory } from "./moderate.js";
+import { groqApiKey, moderateStory } from "./moderate.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -81,6 +81,7 @@ app.get("/health", (_req, res) => {
     ok: true,
     app: "voice",
     models: [User.modelName, Story.modelName],
+    groqKeyLength: groqApiKey().length,
   });
 });
 

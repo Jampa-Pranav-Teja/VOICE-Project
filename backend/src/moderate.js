@@ -1,7 +1,10 @@
 import Groq from "groq-sdk";
 
-function groqApiKey() {
-  return (process.env.GROQ_API_KEY || "").trim().replace(/^["']|["']$/g, "");
+export function groqApiKey() {
+  return (process.env.GROQ_API_KEY || "")
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/\s+/g, "");
 }
 
 function parseModeration(text) {

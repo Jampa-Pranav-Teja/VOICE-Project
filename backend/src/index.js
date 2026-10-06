@@ -32,9 +32,27 @@ function serializeStory(story, userId) {
   };
 }
 
+const allowedOrigins = [
+  "https://exodreamai.in",
+  "https://www.exodreamai.in",
+  process.env.FRONTEND_URL,
+  "http://localhost:5173",
+]
+  .filter(Boolean)
+  .map((origin) => origin.replace(/\/$/, ""));
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 app.use(express.json({ limit: "1mb" }));
@@ -276,8 +294,9 @@ async function start() {
       throw new Error("JWT_SECRET is not configured");
     }
     await connectDb(process.env.MONGODB_URI);
-    app.listen(PORT, () => {
-      console.log(`Server listening on http://localhost:${PORT}`);
+
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server listening on port ${PORT}`);
     });
   } catch (err) {
     console.error("Failed to start server:", err.message);

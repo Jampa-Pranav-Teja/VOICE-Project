@@ -1,0 +1,197 @@
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "Newsreader", Georgia, "Times New Roman", serif;
+  --color-clay: #eadfcc;
+  --color-clay-surface: #f4ece0;
+  --color-clay-ink: #3d342c;
+  --color-clay-muted: #8a7b6c;
+  --color-clay-accent: #c56b4c;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--color-clay-ink);
+  font-family: var(--font-serif);
+  background:
+    radial-gradient(1200px 800px at 8% -12%, #f8f1e6 0%, transparent 52%),
+    radial-gradient(900px 700px at 110% 8%, #e7d3c2 0%, transparent 48%),
+    radial-gradient(700px 500px at 50% 120%, #ddc7b0 0%, transparent 50%),
+    #eadfcc;
+}
+
+.clay {
+  background: var(--color-clay-surface);
+  border-radius: 2rem;
+  box-shadow:
+    12px 12px 24px rgba(166, 145, 118, 0.32),
+    -8px -8px 20px rgba(255, 255, 255, 0.82),
+    inset 2px 2px 6px rgba(255, 255, 255, 0.72),
+    inset -3px -3px 8px rgba(176, 154, 126, 0.2);
+}
+
+.clay-tight {
+  border-radius: 1.5rem;
+}
+
+.clay-inset {
+  background: #e6dccb;
+  border-radius: 1.75rem;
+  box-shadow:
+    inset 8px 8px 16px rgba(166, 145, 118, 0.28),
+    inset -6px -6px 14px rgba(255, 255, 255, 0.62);
+  border: none;
+  outline: none;
+}
+
+.clay-btn {
+  background: var(--color-clay-surface);
+  border: none;
+  border-radius: 999px;
+  padding: 0.55rem 1.15rem;
+  color: var(--color-clay-ink);
+  font: inherit;
+  cursor: pointer;
+  box-shadow:
+    6px 6px 14px rgba(166, 145, 118, 0.3),
+    -4px -4px 10px rgba(255, 255, 255, 0.88),
+    inset 1px 1px 3px rgba(255, 255, 255, 0.75);
+}
+
+.clay-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.clay-btn:active:not(:disabled),
+.clay-btn.is-in {
+  transform: translateY(1px);
+  box-shadow:
+    inset 6px 6px 12px rgba(166, 145, 118, 0.28),
+    inset -4px -4px 10px rgba(255, 255, 255, 0.68);
+}
+
+.clay-btn:disabled {
+  cursor: default;
+  color: var(--color-clay-ink);
+}
+
+.clay-btn-accent {
+  background: linear-gradient(180deg, #d27a5a 0%, #c56b4c 100%);
+  color: #fff7ef;
+  box-shadow:
+    6px 6px 14px rgba(140, 70, 45, 0.32),
+    -3px -3px 10px rgba(255, 214, 196, 0.4),
+    inset 1px 1px 3px rgba(255, 255, 255, 0.28);
+}
+
+.clay-btn-accent:active:not(:disabled) {
+  box-shadow:
+    inset 5px 5px 10px rgba(110, 50, 32, 0.28),
+    inset -3px -3px 8px rgba(255, 210, 190, 0.25);
+}
+
+.clay-btn-accent:disabled {
+  opacity: 0.45;
+}
+
+input.clay-inset,
+textarea.clay-inset {
+  color: var(--color-clay-ink);
+  font: inherit;
+}
+
+input.clay-inset::placeholder,
+textarea.clay-inset::placeholder {
+  color: var(--color-clay-muted);
+}
+
+@keyframes clay-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes clay-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.clay,
+.clay-btn,
+.clay-inset {
+  transition:
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.clay-enter {
+  animation: clay-rise 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.clay-overlay {
+  animation: clay-fade 0.28s ease;
+}
+
+.story-list > li {
+  animation: clay-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.story-list > li:nth-child(1) { animation-delay: 0.04s; }
+.story-list > li:nth-child(2) { animation-delay: 0.1s; }
+.story-list > li:nth-child(3) { animation-delay: 0.16s; }
+.story-list > li:nth-child(4) { animation-delay: 0.22s; }
+.story-list > li:nth-child(5) { animation-delay: 0.28s; }
+
+.clay-btn-google {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 2.75rem;
+  padding: 0.95rem 1.25rem;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-clay-surface);
+  color: var(--color-clay-ink);
+  font: inherit;
+  font-size: 1.05rem;
+  cursor: pointer;
+  box-shadow:
+    8px 8px 16px rgba(166, 145, 118, 0.32),
+    -5px -5px 12px rgba(255, 255, 255, 0.9),
+    inset 1px 1px 3px rgba(255, 255, 255, 0.8);
+  transition:
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.clay-btn-google:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    10px 12px 20px rgba(166, 145, 118, 0.36),
+    -6px -6px 14px rgba(255, 255, 255, 0.95),
+    inset 1px 1px 3px rgba(255, 255, 255, 0.85);
+}
+
+.clay-btn-google:active {
+  transform: translateY(1px);
+  box-shadow:
+    inset 7px 7px 14px rgba(166, 145, 118, 0.3),
+    inset -4px -4px 10px rgba(255, 255, 255, 0.7);
+}
+
+.clay-btn-google svg {
+  flex-shrink: 0;
+}

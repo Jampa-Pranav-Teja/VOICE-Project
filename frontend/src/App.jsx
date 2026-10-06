@@ -1,0 +1,543 @@
+import { useEffect, useState } from "react";
+import { GoogleOAuthProvider, useGoogleLogin } from "@react-oauth/google";
+
+const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
+const TOKEN_KEY = "voice_token";
+
+function authHeaders(token) {
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+function formatDate(value) {
+  return new Date(value).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function Screen({ children, wide = false, center = false }) {
+  return (
+    <div
+      className={`min-h-svh text-clay-ink ${center ? "flex items-center justify-center" : ""}`}
+    >
+      <div
+        className={`mx-auto w-full px-6 ${center ? "py-8" : "py-16 sm:py-24"} ${
+          wide ? "max-w-xl" : "max-w-lg"
+        }`}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ClayButton({
+  active = false,
+  accent = false,
+  className = "",
+  disabled = false,
+  type = "button",
+  ...props
+}) {
+  return (
+    <button
+      type={type}
+      disabled={disabled}
+      className={`clay-btn ${accent ? "clay-btn-accent" : ""} ${active ? "is-in" : ""} ${className}`}
+      {...props}
+    />
+  );
+}
+
+function GoogleClayButton({ onSuccess, onError }) {
+  const login = useGoogleLogin({
+    onSuccess: (tokenResponse) =>
+      onSuccess({ access_token: tokenResponse.access_token }),
+    onError,
+    scope: "openid email profile",
+  });
+
+  return (
+    <button type="button" className="clay-btn-google" onClick={() => login()}>
+      <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
+        <path
+          fill="#FFC107"
+          d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"
+        />
+        <path
+          fill="#FF3D00"
+          d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"
+        />
+        <path
+          fill="#4CAF50"
+          d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238C29.211 35.091 26.715 36 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"
+        />
+        <path
+          fill="#1976D2"
+          d="M43.611 20.083H42V20H24v8h11.303c-.792 2.237-2.231 4.166-4.087 5.571l6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"
+        />
+      </svg>
+      Sign in with Google
+    </button>
+  );
+}
+
+export default function App() {
+  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) || "");
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(Boolean(token));
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [username, setUsername] = useState("");
+  const [content, setContent] = useState("");
+  const [publishing, setPublishing] = useState(false);
+  const [composing, setComposing] = useState(false);
+  const [view, setView] = useState("feed");
+  const [sort, setSort] = useState("date");
+  const [stories, setStories] = useState([]);
+  const [profile, setProfile] = useState(null);
+
+  useEffect(() => {
+    if (!token) {
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch(`${API}/auth/me`, {
+          headers: authHeaders(token),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Session expired");
+        if (!cancelled) setUser(data.user);
+      } catch {
+        localStorage.removeItem(TOKEN_KEY);
+        if (!cancelled) {
+          setToken("");
+          setUser(null);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    if (!token || !user?.username || view !== "feed") return;
+    let cancelled = false;
+
+    (async () => {
+      const res = await fetch(`${API}/stories?sort=${sort}`, {
+        headers: authHeaders(token),
+      });
+      const data = await res.json();
+      if (!cancelled && res.ok) setStories(data.stories || []);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, user, view, sort]);
+
+  useEffect(() => {
+    if (!token || !user?.username || view !== "profile") return;
+    let cancelled = false;
+
+    (async () => {
+      const res = await fetch(`${API}/profile`, {
+        headers: authHeaders(token),
+      });
+      const data = await res.json();
+      if (!cancelled && res.ok) setProfile(data);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, user, view]);
+
+  useEffect(() => {
+    if (!composing) return undefined;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function onKey(event) {
+      if (event.key === "Escape" && !publishing) closeCompose();
+    }
+
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [composing, publishing]);
+
+  function openCompose() {
+    setError("");
+    setNotice("");
+    setComposing(true);
+  }
+
+  function closeCompose() {
+    if (publishing) return;
+    setComposing(false);
+  }
+
+  async function onGoogleSuccess(body) {
+    setError("");
+    const res = await fetch(`${API}/auth/google`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error || "Sign in failed");
+      return;
+    }
+    localStorage.setItem(TOKEN_KEY, data.token);
+    setToken(data.token);
+    setUser(data.user);
+  }
+
+  async function submitUsername(event) {
+    event.preventDefault();
+    setError("");
+    const res = await fetch(`${API}/auth/username`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ username }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error || "Could not set username");
+      return;
+    }
+    setUser(data.user);
+  }
+
+  async function publishStory(event) {
+    event.preventDefault();
+    setError("");
+    setNotice("");
+    setPublishing(true);
+    try {
+      const res = await fetch(`${API}/stories`, {
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify({ content }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.reason || data.error || "Could not publish story");
+        return;
+      }
+      setContent("");
+      setComposing(false);
+      setNotice("Your story is live.");
+      setStories((current) => [data.story, ...current]);
+      setView("feed");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  async function deleteStory(id) {
+    if (!window.confirm("Delete this story? This cannot be undone.")) return;
+    setError("");
+    const res = await fetch(`${API}/stories/${id}`, {
+      method: "DELETE",
+      headers: authHeaders(token),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(data.error || "Could not delete story");
+      return;
+    }
+    setStories((current) => current.filter((story) => story.id !== id));
+    setProfile((current) => {
+      if (!current) return current;
+      const nextStories = current.stories.filter((story) => story.id !== id);
+      return {
+        ...current,
+        stories: nextStories,
+        totalUpvotes: nextStories.reduce(
+          (sum, story) => sum + (story.upvoteCount || 0),
+          0
+        ),
+      };
+    });
+  }
+
+  async function upvoteStory(id) {
+    setError("");
+    const res = await fetch(`${API}/stories/${id}/upvote`, {
+      method: "POST",
+      headers: authHeaders(token),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error || "Could not upvote");
+      return;
+    }
+    setStories((current) =>
+      current.map((story) => (story.id === id ? data.story : story))
+    );
+    setProfile((current) => {
+      if (!current) return current;
+      const nextStories = current.stories.map((story) =>
+        story.id === id ? data.story : story
+      );
+      return {
+        ...current,
+        stories: nextStories,
+        totalUpvotes: nextStories.reduce(
+          (sum, story) => sum + (story.upvoteCount || 0),
+          0
+        ),
+      };
+    });
+  }
+
+  function signOut() {
+    localStorage.removeItem(TOKEN_KEY);
+    setToken("");
+    setUser(null);
+    setUsername("");
+    setContent("");
+    setError("");
+    setNotice("");
+    setStories([]);
+    setProfile(null);
+    setView("feed");
+    setComposing(false);
+  }
+
+  if (loading) {
+    return (
+      <Screen center>
+        <div className="clay clay-enter px-8 py-10">
+          <p className="text-clay-muted">Loading…</p>
+        </div>
+      </Screen>
+    );
+  }
+
+  if (!user) {
+    return (
+      <Screen center>
+        <div className="clay clay-enter px-8 py-12 sm:px-10 sm:py-14">
+          <h1 className="text-6xl font-normal tracking-tight sm:text-7xl">voice</h1>
+          <p className="mt-4 text-xl text-clay-muted italic">
+            Tell the world your story.
+          </p>
+          {GOOGLE_CLIENT_ID ? (
+            <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+              <GoogleClayButton
+                onSuccess={onGoogleSuccess}
+                onError={() => setError("Google sign-in failed")}
+              />
+            </GoogleOAuthProvider>
+          ) : (
+            <p className="mt-12">
+              Add the same Google OAuth client ID to frontend/.env and backend/.env,
+              then restart both servers.
+            </p>
+          )}
+          {error ? <p className="mt-8">{error}</p> : null}
+        </div>
+      </Screen>
+    );
+  }
+
+  if (!user.username) {
+    return (
+      <Screen center>
+        <div className="clay clay-enter px-8 py-12 sm:px-10">
+          <h1 className="text-5xl font-normal tracking-tight">Choose a username</h1>
+          <p className="mt-4 text-lg text-clay-muted">
+            This is the only name others will see on your stories.
+          </p>
+          <form onSubmit={submitUsername} className="mt-12 flex items-center gap-3">
+            <input
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              placeholder="username"
+              autoComplete="username"
+              autoFocus
+              className="clay-inset min-w-0 flex-1 px-5 py-3 text-lg"
+            />
+            <ClayButton type="submit" accent>
+              Save
+            </ClayButton>
+          </form>
+          {error ? <p className="mt-8">{error}</p> : null}
+        </div>
+      </Screen>
+    );
+  }
+
+  const receivedUpvotes = (profile?.stories || []).reduce(
+    (sum, story) => sum + (story.upvoteCount || 0),
+    0
+  );
+
+  return (
+    <Screen wide>
+      <header className="clay flex flex-col gap-6 px-6 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+        <h1 className="text-4xl font-normal tracking-tight">voice</h1>
+        <nav className="flex flex-wrap gap-2">
+          <ClayButton active={view === "feed"} onClick={() => setView("feed")}>
+            Feed
+          </ClayButton>
+          <ClayButton onClick={openCompose}>Write</ClayButton>
+          <ClayButton
+            active={view === "profile"}
+            onClick={() => setView("profile")}
+          >
+            Profile
+          </ClayButton>
+          <ClayButton onClick={signOut}>Sign out</ClayButton>
+        </nav>
+      </header>
+
+      {view === "feed" ? (
+        <section className="mt-10">
+          {notice ? (
+            <p className="clay-inset mb-6 px-5 py-3 text-clay-muted">{notice}</p>
+          ) : null}
+          {error && !composing ? (
+            <p className="clay-inset mb-6 px-5 py-3">{error}</p>
+          ) : null}
+          <div className="mb-6 flex gap-2">
+            <ClayButton active={sort === "date"} onClick={() => setSort("date")}>
+              Latest
+            </ClayButton>
+            <ClayButton
+              active={sort === "upvotes"}
+              onClick={() => setSort("upvotes")}
+            >
+              Top
+            </ClayButton>
+          </div>
+          <StoryList stories={stories} onUpvote={upvoteStory} />
+        </section>
+      ) : (
+        <section className="mt-10">
+          {error && !composing ? (
+            <p className="clay-inset mb-6 px-5 py-3">{error}</p>
+          ) : null}
+          <div className="clay px-8 py-8">
+            <p className="text-3xl tracking-tight">{user.username}</p>
+            <p className="mt-2 text-clay-muted">{user.email}</p>
+            <p className="mt-8 text-xl">
+              {profile
+                ? `${receivedUpvotes} ${receivedUpvotes === 1 ? "upvote" : "upvotes"} received`
+                : "Loading…"}
+            </p>
+          </div>
+          {profile ? (
+            <StoryList stories={profile.stories} onDelete={deleteStory} />
+          ) : null}
+        </section>
+      )}
+
+      {composing ? (
+        <div
+          className="clay-overlay fixed inset-0 z-10 flex items-start justify-center overflow-auto px-6 py-16 sm:items-center"
+          style={{ background: "#eadfcc" }}
+          onClick={closeCompose}
+        >
+          <form
+            onSubmit={publishStory}
+            onClick={(event) => event.stopPropagation()}
+            className="clay clay-enter w-full max-w-xl px-8 py-8"
+          >
+            <p className="text-sm tracking-wide text-clay-muted">New story</p>
+            <textarea
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+              maxLength={50000}
+              placeholder="Tell the world your story."
+              autoFocus
+              className="clay-inset mt-6 h-72 w-full resize-y p-5 text-lg leading-relaxed"
+            />
+            <div className="mt-5 flex items-center justify-between gap-4">
+              <span className="text-sm text-clay-muted">
+                {content.length.toLocaleString()}/50,000
+              </span>
+              <div className="flex items-center gap-2">
+                <ClayButton onClick={closeCompose} disabled={publishing}>
+                  Cancel
+                </ClayButton>
+                <ClayButton
+                  type="submit"
+                  accent
+                  disabled={publishing || !content.trim()}
+                >
+                  {publishing ? "Checking…" : "Publish"}
+                </ClayButton>
+              </div>
+            </div>
+            {error ? <p className="mt-6">{error}</p> : null}
+          </form>
+        </div>
+      ) : null}
+    </Screen>
+  );
+}
+
+function StoryList({ stories, onUpvote, onDelete }) {
+  if (!stories.length) {
+    return (
+      <p className="clay mt-8 px-8 py-10 text-clay-muted">No stories yet.</p>
+    );
+  }
+
+  return (
+    <ul className="story-list mt-2 space-y-6">
+      {stories.map((story) => (
+        <li key={story.id} className="clay px-7 py-7">
+          <p className="text-sm text-clay-muted">
+            {story.authorUsername} · {formatDate(story.createdAt)}
+          </p>
+          <p className="mt-3 whitespace-pre-wrap text-lg leading-relaxed">
+            {story.content}
+          </p>
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            {onUpvote ? (
+              <ClayButton
+                active={story.upvoted}
+                disabled={story.upvoted}
+                onClick={() => onUpvote(story.id)}
+              >
+                {story.upvoted ? "Upvoted" : "Upvote"} · {story.upvoteCount}
+              </ClayButton>
+            ) : (
+              <p className="clay-inset w-fit px-4 py-2">
+                {story.upvoteCount}{" "}
+                {story.upvoteCount === 1 ? "upvote" : "upvotes"}
+              </p>
+            )}
+            {onDelete ? (
+              <ClayButton onClick={() => onDelete(story.id)}>Delete</ClayButton>
+            ) : null}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}

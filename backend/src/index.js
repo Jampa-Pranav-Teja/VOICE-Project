@@ -127,7 +127,7 @@ app.get("/auth/me", requireAuth, (req, res) => {
 app.post("/auth/username", requireAuth, async (req, res) => {
   try {
     if (req.user.username) {
-      return res.status(400).json({ error: "Username is already set" });
+      return res.json({ user: publicUser(req.user) });
     }
 
     const username = normalizeUsername(req.body?.username);
@@ -139,6 +139,9 @@ app.post("/auth/username", requireAuth, async (req, res) => {
 
     const taken = await User.findOne({ username });
     if (taken) {
+      if (String(taken._id) === String(req.user._id)) {
+        return res.json({ user: publicUser(taken) });
+      }
       return res.status(409).json({ error: "That username is taken" });
     }
 
@@ -189,10 +192,22 @@ app.post("/stories", requireAuth, requireUsername, async (req, res) => {
     res.status(201).json({ story: serializeStory(story, req.user._id) });
   } catch (err) {
     console.error("Create story failed:", err.message);
+    console.error(err);
     if (err.message === "GROQ_API_KEY is not configured") {
       return res.status(500).json({ error: err.message });
     }
-    res.status(500).json({ error: "Could not publish story" });
+    if (err.status === 502 || String(err.message).startsWith("Moderation failed")) {
+      return res.status(502).json({
+        error: err.message || "Story moderation failed. Check GROQ_API_KEY on Railway.",
+      });
+    }
+    if (err.name === "ValidationError") {
+      return res.status(400).json({ error: err.message });
+    }
+    res.status(500).json({
+      error: "Could not publish story",
+      reason: err.message,
+    });
   }
 });
 

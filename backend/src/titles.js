@@ -1,18 +1,49 @@
 export const ADMIN_EMAIL = "pranavtejajampa@gmail.com";
-export const ADMIN_DISPLAY_NAME = "GrimEnding";
+export const ADMIN_DISPLAY_NAME = "GrimmyEnding";
 export const OWNER_TITLE_ID = "owner";
+
+const GRADIENT_PALETTE = [
+  "#c56b4c",
+  "#b8860b",
+  "#8b5a7a",
+  "#4a6b8a",
+  "#6b8f71",
+  "#d27a5a",
+  "#7a6b8a",
+  "#2f6f8f",
+  "#a65d7a",
+  "#c9a227",
+  "#5c7cfa",
+  "#e8590c",
+  "#0ca678",
+  "#9c36b5",
+  "#e67700",
+  "#364fc7",
+];
+
+export function randomGiftGradient() {
+  const pool = [...GRADIENT_PALETTE];
+  const colors = [];
+  while (colors.length < 4 && pool.length) {
+    const index = Math.floor(Math.random() * pool.length);
+    colors.push(pool.splice(index, 1)[0]);
+  }
+  colors.push(colors[0]);
+  return colors;
+}
 
 export const OWNER_TITLE = {
   id: OWNER_TITLE_ID,
-  name: "owner",
+  name: "Owner",
   color: "#d4af37",
   kind: "owner",
+  gradient: ["#fff4c2", "#ffe08a", "#d4af37", "#f7e7a1", "#b8860b", "#fff1a8", "#d4af37"],
 };
 
 export const ACHIEVEMENT_TITLES = [
   {
     id: "newbie",
-    name: "newbie",
+    name: "Newbie",
     color: "#6b8f71",
     kind: "achievement",
     minUpvotes: 10,
@@ -20,7 +51,7 @@ export const ACHIEVEMENT_TITLES = [
   },
   {
     id: "storyteller",
-    name: "storyteller",
+    name: "Storyteller",
     color: "#7a6b8a",
     kind: "achievement",
     minUpvotes: 0,
@@ -28,7 +59,7 @@ export const ACHIEVEMENT_TITLES = [
   },
   {
     id: "rising",
-    name: "rising",
+    name: "Rising",
     color: "#c56b4c",
     kind: "achievement",
     minUpvotes: 25,
@@ -36,7 +67,7 @@ export const ACHIEVEMENT_TITLES = [
   },
   {
     id: "chronicler",
-    name: "chronicler",
+    name: "Chronicler",
     color: "#4a6b8a",
     kind: "achievement",
     minUpvotes: 0,
@@ -44,7 +75,7 @@ export const ACHIEVEMENT_TITLES = [
   },
   {
     id: "beloved",
-    name: "beloved",
+    name: "Beloved",
     color: "#8b5a7a",
     kind: "achievement",
     minUpvotes: 50,
@@ -52,7 +83,7 @@ export const ACHIEVEMENT_TITLES = [
   },
   {
     id: "legend",
-    name: "legend",
+    name: "Legend",
     color: "#b8860b",
     kind: "achievement",
     minUpvotes: 100,
@@ -100,6 +131,12 @@ export function ownedTitles(user) {
       name: gift.name,
       color: gift.color || (kind === "owner" ? OWNER_TITLE.color : "#c56b4c"),
       kind,
+      gradient:
+        gift.gradient?.length
+          ? gift.gradient
+          : kind === "owner"
+            ? OWNER_TITLE.gradient
+            : null,
     });
   }
   if (isAdmin(user) && !list.some((title) => title.id === OWNER_TITLE_ID)) {
@@ -115,13 +152,16 @@ export function resolveDisplayTitle(user) {
 }
 
 export function pendingGift(user) {
-  const gift = (user.giftedTitles || []).find((item) => !item.seen);
+  const gift = (user.giftedTitles || []).find(
+    (item) => !item.seen && item.id !== OWNER_TITLE_ID
+  );
   if (!gift) return null;
   return {
     id: gift.id,
     name: gift.name,
     kind: titleKindForGift(gift),
-    from: ADMIN_DISPLAY_NAME,
+    gradient: gift.gradient || null,
+    from: gift.giftedBy || ADMIN_DISPLAY_NAME,
   };
 }
 
@@ -164,6 +204,7 @@ export function catalogForUser(user, totalUpvotes = 0, postCount = 0) {
           name: gift.name,
           color: gift.color || "#c56b4c",
           kind: "gift",
+          gradient: gift.gradient || null,
           unlocked: true,
         })),
     ],

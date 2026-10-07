@@ -23,6 +23,7 @@ import {
   catalogForUser,
   isAdmin,
   ownedTitles,
+  randomGiftGradient,
   resolveDisplayTitle,
 } from "./titles.js";
 import { authorTotals, newGiftId, syncUnlockedTitles } from "./userStats.js";
@@ -415,13 +416,14 @@ app.put("/profile/title", requireAuth, async (req, res) => {
 app.post("/profile/gift/ack", requireAuth, async (req, res) => {
   try {
     const giftId = String(req.body?.giftId || "");
+    if (!giftId) {
+      return res.status(400).json({ error: "Missing gift id" });
+    }
     let changed = false;
     for (const gift of req.user.giftedTitles || []) {
-      if (!giftId || gift.id === giftId) {
-        if (!gift.seen) {
-          gift.seen = true;
-          changed = true;
-        }
+      if (gift.id === giftId && !gift.seen) {
+        gift.seen = true;
+        changed = true;
       }
     }
     if (changed) await req.user.save();
@@ -437,11 +439,12 @@ app.post("/admin/gift-title", requireAuth, requireAdmin, async (req, res) => {
     const username = normalizeUsername(req.body?.username);
     const name = String(req.body?.name || "")
       .trim()
+      .replace(/\s+/g, " ")
       .slice(0, 24);
     if (!username) {
       return res.status(400).json({ error: "Enter a valid username" });
     }
-    if (!name || !/^[a-zA-Z0-9 _-]{2,24}$/.test(name)) {
+    if (!name || !/^[A-Za-z0-9 _-]{2,24}$/.test(name)) {
       return res.status(400).json({
         error: "Title must be 2–24 letters, numbers, spaces, _ or -",
       });
@@ -455,10 +458,12 @@ app.post("/admin/gift-title", requireAuth, requireAdmin, async (req, res) => {
       return res.status(400).json({ error: "Cannot gift titles to proxy users" });
     }
 
+    const gradient = randomGiftGradient();
     const gift = {
       id: newGiftId(),
-      name: name.toLowerCase(),
-      color: "#c56b4c",
+      name,
+      color: gradient[0],
+      gradient,
       giftedBy: ADMIN_DISPLAY_NAME,
       giftedAt: new Date(),
       seen: false,
@@ -476,6 +481,7 @@ app.post("/admin/gift-title", requireAuth, requireAdmin, async (req, res) => {
         id: gift.id,
         name: gift.name,
         kind: "gift",
+        gradient: gift.gradient,
       },
       user: {
         username: target.username,

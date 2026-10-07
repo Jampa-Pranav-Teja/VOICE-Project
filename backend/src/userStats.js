@@ -44,14 +44,32 @@ export async function syncUnlockedTitles(user) {
         id: OWNER_TITLE_ID,
         name: OWNER_TITLE.name,
         color: OWNER_TITLE.color,
+        gradient: OWNER_TITLE.gradient,
         giftedBy: ADMIN_DISPLAY_NAME,
         giftedAt: new Date(),
         seen: true,
       });
       user.giftedTitles = gifts;
       changed = true;
+    } else {
+      const ownerGift = gifts.find((gift) => gift.id === OWNER_TITLE_ID);
+      if (ownerGift) {
+        if (ownerGift.name !== OWNER_TITLE.name) {
+          ownerGift.name = OWNER_TITLE.name;
+          changed = true;
+        }
+        if (ownerGift.giftedBy !== ADMIN_DISPLAY_NAME) {
+          ownerGift.giftedBy = ADMIN_DISPLAY_NAME;
+          changed = true;
+        }
+        if (!ownerGift.gradient?.length) {
+          ownerGift.gradient = OWNER_TITLE.gradient;
+          changed = true;
+        }
+      }
+      user.giftedTitles = gifts;
     }
-    if (!user.activeTitleId || user.showTitle === false) {
+    if (!user.activeTitleId) {
       user.activeTitleId = OWNER_TITLE_ID;
       user.showTitle = true;
       changed = true;

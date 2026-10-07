@@ -54,6 +54,14 @@ function ClayButton({
   );
 }
 
+function gradientStyle(colors) {
+  if (!colors?.length) return undefined;
+  return {
+    backgroundImage: `linear-gradient(120deg, ${colors.join(", ")})`,
+    backgroundSize: "220% 220%",
+  };
+}
+
 function TitleBadge({ title, className = "" }) {
   if (!title?.name) return null;
   const isOwner = title.kind === "owner" || title.id === "owner";
@@ -63,11 +71,13 @@ function TitleBadge({ title, className = "" }) {
     : isGift
       ? "title-badge-gift"
       : "title-badge-static";
+  const style = isOwner
+    ? gradientStyle(title.gradient)
+    : isGift
+      ? gradientStyle(title.gradient)
+      : { color: title.color || "#6b8f71" };
   return (
-    <span
-      className={`title-badge ${tone} ${className}`}
-      style={isOwner || isGift ? undefined : { color: title.color || "#6b8f71" }}
-    >
+    <span className={`title-badge ${tone} ${className}`} style={style}>
       {isOwner ? "👑 " : null}[{title.name}]
     </span>
   );
@@ -112,14 +122,21 @@ function GlitterBurst() {
 
 function GiftPopup({ gift, onClose }) {
   if (!gift) return null;
+  const from = gift.from || "GrimmyEnding";
   return (
     <div className="clay-overlay gift-popup-overlay fixed inset-0 z-30 flex items-center justify-center px-6">
       <div className="clay clay-enter gift-popup relative w-full max-w-md overflow-hidden px-8 py-10 text-center">
         <GlitterBurst />
         <p className="relative z-10 text-sm tracking-wide text-clay-muted">A gift arrived</p>
         <p className="relative z-10 mt-5 text-2xl leading-snug sm:text-3xl">
-          GrimEnding has gifted you the title{" "}
-          <TitleBadge title={{ name: gift.name, kind: "gift" }} />
+          {from} has gifted you the title{" "}
+          <TitleBadge
+            title={{
+              name: gift.name,
+              kind: gift.kind || "gift",
+              gradient: gift.gradient,
+            }}
+          />
         </p>
         <ClayButton accent className="relative z-10 mt-8" onClick={onClose}>
           Wear it proudly
@@ -199,6 +216,12 @@ export default function App() {
       setGiftPopup(nextUser.pendingGift);
     }
   }
+
+  useEffect(() => {
+    if (user?.pendingGift) {
+      setGiftPopup(user.pendingGift);
+    }
+  }, [user?.pendingGift?.id, user?.pendingGift?.name]);
 
   useEffect(() => {
     let cancelled = false;
@@ -474,15 +497,22 @@ export default function App() {
 
   async function ackGift() {
     const giftId = giftPopup?.id;
-    setGiftPopup(null);
-    if (!giftId || !token) return;
+    if (!giftId || !token) {
+      setGiftPopup(null);
+      return;
+    }
     const res = await fetch(`${API}/profile/gift/ack`, {
       method: "POST",
       headers: authHeaders(token),
       body: JSON.stringify({ giftId }),
     });
     const data = await res.json().catch(() => ({}));
-    if (res.ok && data.user) setUser(data.user);
+    if (!res.ok) {
+      setError(data.error || "Could not close gift");
+      return;
+    }
+    if (data.user) setUser(data.user);
+    setGiftPopup(data.user?.pendingGift || null);
   }
 
   async function giftTitleToUser(event) {

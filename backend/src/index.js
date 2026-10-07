@@ -264,19 +264,21 @@ app.post("/stories", requireAuth, requireUsername, async (req, res) => {
     console.error("Create story failed:", err.message);
     console.error(err);
     if (err.message === "GROQ_API_KEY is not configured") {
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({
+        error: "Story check is busy right now. Please try again in a little while.",
+      });
     }
-    if (err.status === 502 || String(err.message).startsWith("Moderation failed")) {
+    if (err.status === 502 || err.public) {
       return res.status(502).json({
-        error: err.message || "Story moderation failed. Check GROQ_API_KEY on Railway.",
+        error: "Story check is busy right now. Please try again in a little while.",
+        reason: "Story check is busy right now. Please try again in a little while.",
       });
     }
     if (err.name === "ValidationError") {
       return res.status(400).json({ error: err.message });
     }
     res.status(500).json({
-      error: "Could not publish story",
-      reason: err.message,
+      error: "Could not publish story. Please try again in a little while.",
     });
   }
 });

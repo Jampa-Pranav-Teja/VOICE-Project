@@ -16,6 +16,7 @@ import {
   verifyGoogleToken,
 } from "./auth.js";
 import { groqApiKey, moderateStory } from "./moderate.js";
+import { communityStats, startCommunity } from "./community.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -76,13 +77,27 @@ app.get("/", (_req, res) => {
 </html>`);
 });
 
-app.get("/health", (_req, res) => {
+app.get("/health", async (_req, res) => {
+  const stats = await communityStats().catch(() => ({
+    totalUsers: 0,
+    activeUsers: 0,
+  }));
   res.json({
     ok: true,
     app: "voice",
     models: [User.modelName, Story.modelName],
     groqKeyLength: groqApiKey().length,
+    ...stats,
   });
+});
+
+app.get("/stats", async (_req, res) => {
+  try {
+    res.json(await communityStats());
+  } catch (err) {
+    console.error("Stats failed:", err.message);
+    res.status(500).json({ error: "Could not load stats" });
+  }
 });
 
 app.post("/auth/google", async (req, res) => {
@@ -111,6 +126,7 @@ app.post("/auth/google", async (req, res) => {
       token: signToken(user),
       user: publicUser(user),
       needsUsername: !user.username,
+      ...(await communityStats()),
     });
   } catch (err) {
     console.error("Google auth failed:", err.message);
@@ -118,10 +134,11 @@ app.post("/auth/google", async (req, res) => {
   }
 });
 
-app.get("/auth/me", requireAuth, (req, res) => {
+app.get("/auth/me", requireAuth, async (req, res) => {
   res.json({
     user: publicUser(req.user),
     needsUsername: !req.user.username,
+    ...(await communityStats()),
   });
 });
 
@@ -227,6 +244,7 @@ app.get("/stories", requireAuth, async (req, res) => {
     res.json({
       sort,
       stories: stories.map((story) => serializeStory(story, req.user._id)),
+      ...(await communityStats()),
     });
   } catch (err) {
     console.error("Feed failed:", err.message);
@@ -313,6 +331,7 @@ async function start() {
 
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server listening on port ${PORT}`);
+      startCommunity();
     });
   } catch (err) {
     console.error("Failed to start server:", err.message);

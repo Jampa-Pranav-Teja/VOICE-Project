@@ -9,6 +9,7 @@ const storySchema = new mongoose.Schema({
   authorUsername: { type: String, required: true },
   content: { type: String, required: true, maxlength: 50000 },
   upvotes: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+  sourceHash: { type: String, unique: true, sparse: true },
   createdAt: { type: Date, default: Date.now },
 });
 

@@ -101,6 +101,45 @@ export default function App() {
   const [sort, setSort] = useState("date");
   const [stories, setStories] = useState([]);
   const [profile, setProfile] = useState(null);
+  const [stats, setStats] = useState({ totalUsers: 0, activeUsers: 0 });
+  const [statsLoaded, setStatsLoaded] = useState(false);
+
+  function applyStats(data) {
+    if (typeof data?.totalUsers !== "number" && typeof data?.activeUsers !== "number") {
+      return;
+    }
+    setStats({
+      totalUsers: data.totalUsers || 0,
+      activeUsers: data.activeUsers || 0,
+    });
+    setStatsLoaded(true);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadStats() {
+      for (const path of ["/stats", "/health"]) {
+        try {
+          const res = await fetch(`${API}${path}`);
+          const data = await res.json();
+          if (!cancelled && res.ok && typeof data.totalUsers === "number") {
+            applyStats(data);
+            return;
+          }
+        } catch {
+          /* try the next endpoint */
+        }
+      }
+    }
+
+    loadStats();
+    const timer = setInterval(loadStats, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     if (!token) {
@@ -118,7 +157,10 @@ export default function App() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Session expired");
-        if (!cancelled) setUser(data.user);
+        if (!cancelled) {
+          setUser(data.user);
+          applyStats(data);
+        }
       } catch {
         localStorage.removeItem(TOKEN_KEY);
         if (!cancelled) {
@@ -144,7 +186,10 @@ export default function App() {
         headers: authHeaders(token),
       });
       const data = await res.json();
-      if (!cancelled && res.ok) setStories(data.stories || []);
+      if (!cancelled && res.ok) {
+        setStories(data.stories || []);
+        applyStats(data);
+      }
     })();
 
     return () => {
@@ -211,6 +256,7 @@ export default function App() {
     localStorage.setItem(TOKEN_KEY, data.token);
     setToken(data.token);
     setUser(data.user);
+    applyStats(data);
   }
 
   async function submitUsername(event) {
@@ -357,6 +403,12 @@ export default function App() {
               then restart both servers.
             </p>
           )}
+          {statsLoaded ? (
+            <p className="clay-inset mt-10 px-5 py-3 text-lg">
+              {stats.totalUsers.toLocaleString()}{" "}
+              {stats.totalUsers === 1 ? "person is" : "people are"} already on voice
+            </p>
+          ) : null}
           {error ? <p className="mt-8">{error}</p> : null}
         </div>
       </Screen>
@@ -371,6 +423,12 @@ export default function App() {
           <p className="mt-4 text-lg text-clay-muted">
             This is the only name others will see on your stories.
           </p>
+          {statsLoaded ? (
+            <p className="mt-4 text-lg">
+              {stats.totalUsers.toLocaleString()}{" "}
+              {stats.totalUsers === 1 ? "person is" : "people are"} already here
+            </p>
+          ) : null}
           <form onSubmit={submitUsername} className="mt-12 flex items-center gap-3">
             <input
               value={username}
@@ -398,7 +456,15 @@ export default function App() {
   return (
     <Screen wide>
       <header className="clay flex flex-col gap-6 px-6 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-8">
-        <h1 className="text-4xl font-normal tracking-tight">voice</h1>
+        <div>
+          <h1 className="text-4xl font-normal tracking-tight">voice</h1>
+          {view === "feed" && statsLoaded ? (
+            <p className="mt-2 text-lg">
+              {stats.activeUsers.toLocaleString()}{" "}
+              {stats.activeUsers === 1 ? "person" : "people"} here now
+            </p>
+          ) : null}
+        </div>
         <nav className="flex flex-wrap gap-2">
           <ClayButton active={view === "feed"} onClick={() => setView("feed")}>
             Feed

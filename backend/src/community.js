@@ -15,6 +15,7 @@ const SUBREDDITS = [
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 const MAX_PROXY_POSTS_PER_DAY = 4;
+const MAX_PROXY_UPVOTES_PER_STORY = 10;
 const POST_INTERVAL_MS = 25 * 60 * 1000;
 const UPVOTE_INTERVAL_MS = 90 * 1000;
 
@@ -162,20 +163,31 @@ async function maybePost(max = 1) {
   return posted;
 }
 
+function proxyUpvoteCount(story, proxyIds) {
+  return (story.upvotes || []).filter((id) => proxyIds.has(String(id))).length;
+}
+
 async function maybeUpvote() {
   const proxies = await User.find({ isProxy: true });
   if (!proxies.length) return 0;
 
+  const proxyIds = new Set(proxies.map((user) => String(user._id)));
   const stories = await Story.find().sort({ createdAt: -1 }).limit(50);
   if (!stories.length) return 0;
 
   const votes = 2 + Math.floor(Math.random() * 4);
   let applied = 0;
-  const quieter = stories.filter((story) => (story.upvotes || []).length < 18);
-  const pool = quieter.length ? quieter : stories;
+  const pool = stories.filter(
+    (story) => proxyUpvoteCount(story, proxyIds) < MAX_PROXY_UPVOTES_PER_STORY
+  );
+  if (!pool.length) return 0;
 
   for (let i = 0; i < votes; i += 1) {
-    const story = pick(pool);
+    const open = pool.filter(
+      (story) => proxyUpvoteCount(story, proxyIds) < MAX_PROXY_UPVOTES_PER_STORY
+    );
+    if (!open.length) break;
+    const story = pick(open);
     const eligible = proxies.filter((user) => {
       if (String(user._id) === String(story.authorId)) return false;
       return !story.upvotes.some((id) => String(id) === String(user._id));

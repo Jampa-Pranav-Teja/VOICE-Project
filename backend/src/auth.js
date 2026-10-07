@@ -7,6 +7,7 @@ import {
   pendingGift,
   resolveDisplayTitle,
 } from "./titles.js";
+import { pendingMessage } from "./messages.js";
 
 export const googleClientId = (process.env.GOOGLE_CLIENT_ID || "").trim();
 const googleClient = new OAuth2Client(googleClientId);
@@ -23,6 +24,7 @@ export function publicUser(user) {
     title,
     titles: ownedTitles(user),
     pendingGift: pendingGift(user),
+    pendingMessage: pendingMessage(user),
   };
 }
 

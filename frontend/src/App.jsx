@@ -146,6 +146,86 @@ function GiftPopup({ gift, onClose }) {
   );
 }
 
+function AdminMessagePopup({ message, onClose }) {
+  const [reply, setReply] = useState("");
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    setReply("");
+  }, [message?.id]);
+
+  if (!message) return null;
+
+  async function submit(event) {
+    event.preventDefault();
+    setSending(true);
+    try {
+      await onClose(reply.trim());
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="clay-overlay gift-popup-overlay fixed inset-0 z-30 flex items-center justify-center px-6">
+      <form
+        onSubmit={submit}
+        className="clay clay-enter gift-popup relative w-full max-w-md overflow-hidden px-8 py-10"
+      >
+        <GlitterBurst />
+        <p className="relative z-10 text-sm tracking-wide text-clay-muted">
+          Message from {message.from || "GrimmyEnding"}
+        </p>
+        <p className="relative z-10 mt-5 whitespace-pre-wrap text-2xl leading-snug">
+          {message.body}
+        </p>
+        <textarea
+          value={reply}
+          onChange={(event) => setReply(event.target.value)}
+          maxLength={2000}
+          placeholder="Write a reply (optional)"
+          className="clay-inset relative z-10 mt-6 h-28 w-full resize-y p-4 text-base"
+        />
+        <div className="relative z-10 mt-6 flex flex-wrap justify-end gap-2">
+          <ClayButton
+            type="button"
+            disabled={sending}
+            onClick={() => onClose("")}
+          >
+            Close
+          </ClayButton>
+          <ClayButton type="submit" accent disabled={sending}>
+            {sending ? "Sending…" : reply.trim() ? "Send reply" : "Got it"}
+          </ClayButton>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function AdminReplyPopup({ reply, onClose }) {
+  if (!reply) return null;
+  return (
+    <div className="clay-overlay gift-popup-overlay fixed inset-0 z-30 flex items-center justify-center px-6">
+      <div className="clay clay-enter gift-popup relative w-full max-w-md overflow-hidden px-8 py-10">
+        <GlitterBurst />
+        <p className="relative z-10 text-sm tracking-wide text-clay-muted">
+          Reply from {reply.username}
+        </p>
+        <p className="relative z-10 mt-4 text-sm text-clay-muted">You wrote</p>
+        <p className="relative z-10 mt-1 whitespace-pre-wrap text-lg">{reply.original}</p>
+        <p className="relative z-10 mt-6 text-sm text-clay-muted">They replied</p>
+        <p className="relative z-10 mt-1 whitespace-pre-wrap text-2xl leading-snug">
+          {reply.reply}
+        </p>
+        <ClayButton accent className="relative z-10 mt-8" onClick={onClose}>
+          Got it
+        </ClayButton>
+      </div>
+    </div>
+  );
+}
+
 function GoogleClayButton({ onSuccess, onError }) {
   const login = useGoogleLogin({
     onSuccess: (tokenResponse) =>
@@ -199,6 +279,11 @@ export default function App() {
   const [giftUsername, setGiftUsername] = useState("");
   const [giftTitle, setGiftTitle] = useState("");
   const [gifting, setGifting] = useState(false);
+  const [msgUsername, setMsgUsername] = useState("");
+  const [msgBody, setMsgBody] = useState("");
+  const [messaging, setMessaging] = useState(false);
+  const [messagePopup, setMessagePopup] = useState(null);
+  const [replyPopup, setReplyPopup] = useState(null);
   const [supportOpen, setSupportOpen] = useState(false);
 
   function applyStats(data) {
@@ -212,17 +297,37 @@ export default function App() {
     setStatsLoaded(true);
   }
 
-  function maybeShowGift(nextUser) {
+  function applyPending(nextUser, extras = {}) {
     if (nextUser?.pendingGift) {
       setGiftPopup(nextUser.pendingGift);
+      setMessagePopup(null);
+      setReplyPopup(null);
+      return;
     }
+    setGiftPopup(null);
+    if (nextUser?.pendingMessage) {
+      setMessagePopup(nextUser.pendingMessage);
+      setReplyPopup(null);
+      return;
+    }
+    setMessagePopup(null);
+    if (extras.pendingReply) {
+      setReplyPopup(extras.pendingReply);
+      return;
+    }
+    setReplyPopup(null);
   }
 
   useEffect(() => {
-    if (user?.pendingGift) {
+    if (!user) return;
+    if (user.pendingGift) {
       setGiftPopup(user.pendingGift);
+      return;
     }
-  }, [user?.pendingGift?.id, user?.pendingGift?.name]);
+    if (user.pendingMessage) {
+      setMessagePopup(user.pendingMessage);
+    }
+  }, [user?.pendingGift?.id, user?.pendingGift?.name, user?.pendingMessage?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -269,7 +374,7 @@ export default function App() {
         if (!cancelled) {
           setUser(data.user);
           applyStats(data);
-          maybeShowGift(data.user);
+          applyPending(data.user, data);
         }
       } catch {
         localStorage.removeItem(TOKEN_KEY);
@@ -370,7 +475,7 @@ export default function App() {
     setToken(data.token);
     setUser(data.user);
     applyStats(data);
-    maybeShowGift(data.user);
+    applyPending(data.user, data);
   }
 
   async function submitUsername(event) {
@@ -513,7 +618,47 @@ export default function App() {
       return;
     }
     if (data.user) setUser(data.user);
-    setGiftPopup(data.user?.pendingGift || null);
+    applyPending(data.user, data);
+  }
+
+  async function respondToMessage(replyText) {
+    const messageId = messagePopup?.id;
+    if (!messageId || !token) {
+      setMessagePopup(null);
+      return;
+    }
+    const res = await fetch(`${API}/messages/${messageId}/respond`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ reply: replyText || "" }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(data.error || "Could not close message");
+      return;
+    }
+    if (data.user) setUser(data.user);
+    applyPending(data.user, data);
+  }
+
+  async function ackAdminReply() {
+    const item = replyPopup;
+    if (!item?.id || !token) {
+      setReplyPopup(null);
+      return;
+    }
+    const res = await fetch(`${API}/admin/messages/${item.id}/ack-reply`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ userId: item.userId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(data.error || "Could not close reply");
+      return;
+    }
+    if (data.user) setUser(data.user);
+    applyPending(data.user, data);
   }
 
   async function giftTitleToUser(event) {
@@ -543,6 +688,33 @@ export default function App() {
     }
   }
 
+  async function sendAdminMessage(event) {
+    event.preventDefault();
+    setError("");
+    setNotice("");
+    setMessaging(true);
+    try {
+      const res = await fetch(`${API}/admin/message`, {
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify({
+          username: msgUsername,
+          body: msgBody,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Could not send message");
+        return;
+      }
+      setNotice(`Message sent to ${data.message.username}.`);
+      setMsgUsername("");
+      setMsgBody("");
+    } finally {
+      setMessaging(false);
+    }
+  }
+
   function signOut() {
     localStorage.removeItem(TOKEN_KEY);
     setToken("");
@@ -556,6 +728,8 @@ export default function App() {
     setView("feed");
     setComposing(false);
     setGiftPopup(null);
+    setMessagePopup(null);
+    setReplyPopup(null);
   }
 
   if (loading) {
@@ -688,27 +862,53 @@ export default function App() {
             <p className="clay-inset mb-6 px-5 py-3">{error}</p>
           ) : null}
           {user.isAdmin ? (
-            <form
-              onSubmit={giftTitleToUser}
-              className="clay mb-6 flex flex-col gap-3 px-6 py-5 sm:flex-row sm:items-center"
-            >
-              <p className="shrink-0 text-sm text-clay-muted">Gift a title</p>
-              <input
-                value={giftUsername}
-                onChange={(event) => setGiftUsername(event.target.value)}
-                placeholder="username"
-                className="clay-inset min-w-0 flex-1 px-4 py-2"
-              />
-              <input
-                value={giftTitle}
-                onChange={(event) => setGiftTitle(event.target.value)}
-                placeholder="title name"
-                className="clay-inset min-w-0 flex-1 px-4 py-2"
-              />
-              <ClayButton type="submit" accent disabled={gifting}>
-                {gifting ? "Gifting…" : "Gift"}
-              </ClayButton>
-            </form>
+            <div className="mb-6 space-y-4">
+              <form
+                onSubmit={giftTitleToUser}
+                className="clay flex flex-col gap-3 px-6 py-5 sm:flex-row sm:items-center"
+              >
+                <p className="shrink-0 text-sm text-clay-muted">Gift a title</p>
+                <input
+                  value={giftUsername}
+                  onChange={(event) => setGiftUsername(event.target.value)}
+                  placeholder="username"
+                  className="clay-inset min-w-0 flex-1 px-4 py-2"
+                />
+                <input
+                  value={giftTitle}
+                  onChange={(event) => setGiftTitle(event.target.value)}
+                  placeholder="title name"
+                  className="clay-inset min-w-0 flex-1 px-4 py-2"
+                />
+                <ClayButton type="submit" accent disabled={gifting}>
+                  {gifting ? "Gifting…" : "Gift"}
+                </ClayButton>
+              </form>
+              <form
+                onSubmit={sendAdminMessage}
+                className="clay flex flex-col gap-3 px-6 py-5"
+              >
+                <p className="text-sm text-clay-muted">Send a one-time message</p>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <input
+                    value={msgUsername}
+                    onChange={(event) => setMsgUsername(event.target.value)}
+                    placeholder="username"
+                    className="clay-inset min-w-0 flex-1 px-4 py-2"
+                  />
+                  <ClayButton type="submit" accent disabled={messaging}>
+                    {messaging ? "Sending…" : "Send"}
+                  </ClayButton>
+                </div>
+                <textarea
+                  value={msgBody}
+                  onChange={(event) => setMsgBody(event.target.value)}
+                  maxLength={2000}
+                  placeholder="Your message"
+                  className="clay-inset min-h-24 w-full resize-y p-4"
+                />
+              </form>
+            </div>
           ) : null}
           <div className="mb-6 flex gap-2">
             <ClayButton active={sort === "date"} onClick={() => setSort("date")}>
@@ -850,6 +1050,12 @@ export default function App() {
       ) : null}
 
       <GiftPopup gift={giftPopup} onClose={ackGift} />
+      {!giftPopup ? (
+        <AdminMessagePopup message={messagePopup} onClose={respondToMessage} />
+      ) : null}
+      {!giftPopup && !messagePopup ? (
+        <AdminReplyPopup reply={replyPopup} onClose={ackAdminReply} />
+      ) : null}
 
       {supportOpen ? (
         <div

@@ -13,6 +13,20 @@ const giftedTitleSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const adminNoteSchema = new mongoose.Schema(
+  {
+    id: { type: String, required: true },
+    body: { type: String, required: true, maxlength: 2000 },
+    from: { type: String, default: "GrimmyEnding" },
+    createdAt: { type: Date, default: Date.now },
+    seen: { type: Boolean, default: false },
+    reply: { type: String, default: null, maxlength: 2000 },
+    replyAt: { type: Date, default: null },
+    replySeen: { type: Boolean, default: false },
+  },
+  { _id: false }
+);
+
 const userSchema = new mongoose.Schema({
   googleId: { type: String, required: true, unique: true },
   email: { type: String, required: true },
@@ -23,6 +37,7 @@ const userSchema = new mongoose.Schema({
   activeTitleId: { type: String, default: null },
   unlockedTitleIds: { type: [String], default: [] },
   giftedTitles: { type: [giftedTitleSchema], default: [] },
+  adminNotes: { type: [adminNoteSchema], default: [] },
 });
 
 export const User = mongoose.model("User", userSchema);

@@ -27,9 +27,19 @@ import {
   resolveDisplayTitle,
 } from "./titles.js";
 import { authorTotals, newGiftId, syncUnlockedTitles } from "./userStats.js";
+import {
+  newMessageId,
+  pendingReplyForAdmin,
+} from "./messages.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+
+async function authExtras(user) {
+  return {
+    pendingReply: await pendingReplyForAdmin(user),
+  };
+}
 
 function serializeStory(story, userId, authorTitle = null) {
   const upvotes = (story.upvotes || []).map((id) => String(id));
@@ -161,6 +171,7 @@ app.post("/auth/google", async (req, res) => {
       token: signToken(user),
       user: publicUser(user),
       needsUsername: !user.username,
+      ...(await authExtras(user)),
       ...(await communityStats()),
     });
   } catch (err) {
@@ -174,6 +185,7 @@ app.get("/auth/me", requireAuth, async (req, res) => {
   res.json({
     user: publicUser(req.user),
     needsUsername: !req.user.username,
+    ...(await authExtras(req.user)),
     ...(await communityStats()),
   });
 });
@@ -431,6 +443,108 @@ app.post("/profile/gift/ack", requireAuth, async (req, res) => {
   } catch (err) {
     console.error("Ack gift failed:", err.message);
     res.status(500).json({ error: "Could not acknowledge gift" });
+  }
+});
+
+app.post("/admin/message", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const username = normalizeUsername(req.body?.username);
+    const body = String(req.body?.body || "").trim().slice(0, 2000);
+    if (!username) {
+      return res.status(400).json({ error: "Enter a valid username" });
+    }
+    if (!body || body.length < 2) {
+      return res.status(400).json({ error: "Write a short message" });
+    }
+
+    const target = await User.findOne({ username });
+    if (!target) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    if (target.isProxy) {
+      return res.status(400).json({ error: "Cannot message proxy users" });
+    }
+
+    const note = {
+      id: newMessageId(),
+      body,
+      from: ADMIN_DISPLAY_NAME,
+      createdAt: new Date(),
+      seen: false,
+      reply: null,
+      replyAt: null,
+      replySeen: false,
+    };
+    target.adminNotes = [...(target.adminNotes || []), note];
+    await target.save();
+
+    res.json({
+      ok: true,
+      message: { id: note.id, username: target.username },
+    });
+  } catch (err) {
+    console.error("Admin message failed:", err.message);
+    res.status(500).json({ error: "Could not send message" });
+  }
+});
+
+app.post("/messages/:id/respond", requireAuth, async (req, res) => {
+  try {
+    const messageId = String(req.params.id || "");
+    const reply = String(req.body?.reply || "").trim().slice(0, 2000);
+    const note = (req.user.adminNotes || []).find((item) => item.id === messageId);
+    if (!note) {
+      return res.status(404).json({ error: "Message not found" });
+    }
+    if (note.seen) {
+      return res.json({
+        user: publicUser(req.user),
+        ...(await authExtras(req.user)),
+      });
+    }
+
+    note.seen = true;
+    if (reply) {
+      note.reply = reply;
+      note.replyAt = new Date();
+      note.replySeen = false;
+    }
+    await req.user.save();
+
+    res.json({
+      user: publicUser(req.user),
+      ...(await authExtras(req.user)),
+    });
+  } catch (err) {
+    console.error("Respond to message failed:", err.message);
+    res.status(500).json({ error: "Could not send reply" });
+  }
+});
+
+app.post("/admin/messages/:id/ack-reply", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const messageId = String(req.params.id || "");
+    const userId = String(req.body?.userId || "");
+    const target = userId
+      ? await User.findById(userId)
+      : await User.findOne({ "adminNotes.id": messageId });
+    if (!target) {
+      return res.status(404).json({ error: "Reply not found" });
+    }
+    const note = (target.adminNotes || []).find((item) => item.id === messageId);
+    if (!note) {
+      return res.status(404).json({ error: "Reply not found" });
+    }
+    note.replySeen = true;
+    await target.save();
+
+    res.json({
+      user: publicUser(req.user),
+      ...(await authExtras(req.user)),
+    });
+  } catch (err) {
+    console.error("Ack reply failed:", err.message);
+    res.status(500).json({ error: "Could not close reply" });
   }
 });
 

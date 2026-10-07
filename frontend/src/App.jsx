@@ -27,7 +27,7 @@ function Screen({ children, wide = false, center = false }) {
     >
       <div
         className={`mx-auto w-full px-6 ${center ? "py-8" : "py-16 sm:py-24"} ${
-          wide ? "max-w-xl" : "max-w-lg"
+          wide ? "max-w-2xl" : "max-w-lg"
         }`}
       >
         {children}
@@ -455,28 +455,37 @@ export default function App() {
 
   return (
     <Screen wide>
-      <header className="clay flex flex-col gap-6 px-6 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-8">
-        <div>
-          <h1 className="text-4xl font-normal tracking-tight">voice</h1>
+      <header className="clay flex items-center justify-between gap-3 px-5 py-5 sm:gap-4 sm:px-8 sm:py-6">
+        <div className="min-w-0">
+          <h1 className="text-3xl font-normal tracking-tight sm:text-4xl">voice</h1>
           {view === "feed" && statsLoaded ? (
-            <p className="mt-2 text-lg">
+            <p className="mt-1 text-sm sm:mt-2 sm:text-lg">
               {stats.activeUsers.toLocaleString()}{" "}
               {stats.activeUsers === 1 ? "person" : "people"} here now
             </p>
           ) : null}
         </div>
-        <nav className="flex flex-wrap gap-2">
-          <ClayButton active={view === "feed"} onClick={() => setView("feed")}>
+        <nav className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+          <ClayButton
+            className="clay-btn-nav"
+            active={view === "feed"}
+            onClick={() => setView("feed")}
+          >
             Feed
           </ClayButton>
-          <ClayButton onClick={openCompose}>Write</ClayButton>
+          <ClayButton className="clay-btn-nav" onClick={openCompose}>
+            Write
+          </ClayButton>
           <ClayButton
+            className="clay-btn-nav"
             active={view === "profile"}
             onClick={() => setView("profile")}
           >
             Profile
           </ClayButton>
-          <ClayButton onClick={signOut}>Sign out</ClayButton>
+          <ClayButton className="clay-btn-nav" onClick={signOut}>
+            Sign out
+          </ClayButton>
         </nav>
       </header>
 

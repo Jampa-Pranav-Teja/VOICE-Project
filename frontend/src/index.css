@@ -81,6 +81,19 @@ body {
   color: var(--color-clay-ink);
 }
 
+.clay-btn-nav {
+  padding: 0.4rem 0.65rem;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+@media (min-width: 640px) {
+  .clay-btn-nav {
+    padding: 0.5rem 0.9rem;
+    font-size: 1rem;
+  }
+}
+
 .clay-btn-accent {
   background: linear-gradient(180deg, #d27a5a 0%, #c56b4c 100%);
   color: #fff7ef;

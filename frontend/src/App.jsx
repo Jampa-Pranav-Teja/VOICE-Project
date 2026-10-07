@@ -748,7 +748,7 @@ export default function App() {
               </p>
             ) : null}
             <ClayButton className="mt-8" onClick={() => setSupportOpen(true)}>
-              Message me
+              Contact Admin
             </ClayButton>
           </div>
 

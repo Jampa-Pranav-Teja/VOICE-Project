@@ -134,7 +134,7 @@ export default function App() {
     }
 
     loadStats();
-    const timer = setInterval(loadStats, 30_000);
+    const timer = setInterval(loadStats, 60_000);
     return () => {
       cancelled = true;
       clearInterval(timer);

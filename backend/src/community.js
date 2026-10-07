@@ -190,23 +190,20 @@ async function maybeUpvote() {
   return applied;
 }
 
+function activeUsersForMinute(totalUsers, now = Date.now()) {
+  const max = Math.max(1, totalUsers);
+  const bucket = Math.floor(now / 60_000);
+  // Deterministic per 60s window so every client sees the same count.
+  let seed = (bucket * 2654435761) >>> 0;
+  seed = (Math.imul(seed ^ (seed >>> 15), seed | 1) >>> 0) % max;
+  return seed + 1;
+}
+
 export async function communityStats() {
   const totalUsers = await User.countDocuments();
-  const proxyCount = await User.countDocuments({ isProxy: true });
-  const bucket = Math.floor(Date.now() / (3 * 60 * 1000));
-  const wave = (Math.sin(bucket / 8) + 1) / 2;
-  const activeProxies = Math.max(
-    5,
-    Math.min(proxyCount, Math.round(proxyCount * (0.32 + wave * 0.28)))
-  );
-  const realActive = await User.countDocuments({
-    isProxy: { $ne: true },
-    lastPostDate: { $gte: new Date(Date.now() - 36 * 60 * 60 * 1000) },
-  });
-
   return {
     totalUsers,
-    activeUsers: activeProxies + realActive,
+    activeUsers: activeUsersForMinute(totalUsers),
   };
 }
 

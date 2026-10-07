@@ -1,15 +1,28 @@
 import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import { User } from "./models/User.js";
+import {
+  isAdmin,
+  ownedTitles,
+  pendingGift,
+  resolveDisplayTitle,
+} from "./titles.js";
 
 export const googleClientId = (process.env.GOOGLE_CLIENT_ID || "").trim();
 const googleClient = new OAuth2Client(googleClientId);
 
 export function publicUser(user) {
+  const title = resolveDisplayTitle(user);
   return {
     id: String(user._id),
     email: user.email,
     username: user.username || null,
+    isAdmin: isAdmin(user),
+    showTitle: user.showTitle !== false,
+    activeTitleId: user.activeTitleId || null,
+    title,
+    titles: ownedTitles(user),
+    pendingGift: pendingGift(user),
   };
 }
 
@@ -64,6 +77,13 @@ export async function requireAuth(req, res, next) {
 export function requireUsername(req, res, next) {
   if (!req.user.username) {
     return res.status(403).json({ error: "Set a username before posting" });
+  }
+  next();
+}
+
+export function requireAdmin(req, res, next) {
+  if (!isAdmin(req.user)) {
+    return res.status(403).json({ error: "Admin only" });
   }
   next();
 }

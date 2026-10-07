@@ -54,6 +54,75 @@ function ClayButton({
   );
 }
 
+function TitleBadge({ title, className = "" }) {
+  if (!title?.name) return null;
+  const isGift = title.kind === "gift";
+  return (
+    <span
+      className={`title-badge ${isGift ? "title-badge-gift" : "title-badge-static"} ${className}`}
+      style={isGift ? undefined : { color: title.color || "#6b8f71" }}
+    >
+      [{title.name}]
+    </span>
+  );
+}
+
+function AuthorLine({ username, title, createdAt }) {
+  return (
+    <p className="text-sm text-clay-muted">
+      {title ? (
+        <>
+          <TitleBadge title={title} />{" "}
+        </>
+      ) : null}
+      <span>{username}</span>
+      {createdAt ? <> · {formatDate(createdAt)}</> : null}
+    </p>
+  );
+}
+
+function GlitterBurst() {
+  const bits = Array.from({ length: 28 }, (_, index) => {
+    const left = `${(index * 37) % 100}%`;
+    const delay = `${(index % 7) * 0.08}s`;
+    const duration = `${1.4 + (index % 5) * 0.18}s`;
+    const size = `${4 + (index % 4)}px`;
+    return (
+      <span
+        key={index}
+        className="glitter-bit"
+        style={{
+          left,
+          animationDelay: delay,
+          animationDuration: duration,
+          width: size,
+          height: size,
+        }}
+      />
+    );
+  });
+  return <div className="glitter-field" aria-hidden="true">{bits}</div>;
+}
+
+function GiftPopup({ gift, onClose }) {
+  if (!gift) return null;
+  return (
+    <div className="clay-overlay gift-popup-overlay fixed inset-0 z-30 flex items-center justify-center px-6">
+      <div className="clay clay-enter gift-popup relative w-full max-w-md overflow-hidden px-8 py-10 text-center">
+        <GlitterBurst />
+        <p className="relative z-10 text-sm tracking-wide text-clay-muted">A gift arrived</p>
+        <p className="relative z-10 mt-5 text-2xl leading-snug sm:text-3xl">
+          GrimEnding has gifted you the title{" "}
+          <TitleBadge title={{ name: gift.name, kind: "gift" }} />
+        </p>
+        <ClayButton accent className="relative z-10 mt-8" onClick={onClose}>
+          Wear it proudly
+        </ClayButton>
+      </div>
+    </div>
+  );
+}
+
 function GoogleClayButton({ onSuccess, onError }) {
   const login = useGoogleLogin({
     onSuccess: (tokenResponse) =>
@@ -103,6 +172,10 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [stats, setStats] = useState({ totalUsers: 0, activeUsers: 0 });
   const [statsLoaded, setStatsLoaded] = useState(false);
+  const [giftPopup, setGiftPopup] = useState(null);
+  const [giftUsername, setGiftUsername] = useState("");
+  const [giftTitle, setGiftTitle] = useState("");
+  const [gifting, setGifting] = useState(false);
 
   function applyStats(data) {
     if (typeof data?.totalUsers !== "number" && typeof data?.activeUsers !== "number") {
@@ -113,6 +186,12 @@ export default function App() {
       activeUsers: data.activeUsers || 0,
     });
     setStatsLoaded(true);
+  }
+
+  function maybeShowGift(nextUser) {
+    if (nextUser?.pendingGift) {
+      setGiftPopup(nextUser.pendingGift);
+    }
   }
 
   useEffect(() => {
@@ -160,6 +239,7 @@ export default function App() {
         if (!cancelled) {
           setUser(data.user);
           applyStats(data);
+          maybeShowGift(data.user);
         }
       } catch {
         localStorage.removeItem(TOKEN_KEY);
@@ -206,13 +286,16 @@ export default function App() {
         headers: authHeaders(token),
       });
       const data = await res.json();
-      if (!cancelled && res.ok) setProfile(data);
+      if (!cancelled && res.ok) {
+        setProfile(data);
+        if (data.user) setUser(data.user);
+      }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [token, user, view]);
+  }, [token, user?.username, view]);
 
   useEffect(() => {
     if (!composing) return undefined;
@@ -257,6 +340,7 @@ export default function App() {
     setToken(data.token);
     setUser(data.user);
     applyStats(data);
+    maybeShowGift(data.user);
   }
 
   async function submitUsername(event) {
@@ -358,6 +442,70 @@ export default function App() {
     });
   }
 
+  async function selectTitle(titleId) {
+    setError("");
+    const res = await fetch(`${API}/profile/title`, {
+      method: "PUT",
+      headers: authHeaders(token),
+      body: JSON.stringify(
+        titleId === "none"
+          ? { titleId: "none", showTitle: false }
+          : { titleId, showTitle: true }
+      ),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error || "Could not update title");
+      return;
+    }
+    setUser(data.user);
+    setProfile((current) =>
+      current
+        ? { ...current, user: data.user, catalog: data.catalog || current.catalog }
+        : current
+    );
+  }
+
+  async function ackGift() {
+    const giftId = giftPopup?.id;
+    setGiftPopup(null);
+    if (!giftId || !token) return;
+    const res = await fetch(`${API}/profile/gift/ack`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ giftId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.user) setUser(data.user);
+  }
+
+  async function giftTitleToUser(event) {
+    event.preventDefault();
+    setError("");
+    setNotice("");
+    setGifting(true);
+    try {
+      const res = await fetch(`${API}/admin/gift-title`, {
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify({
+          username: giftUsername,
+          name: giftTitle,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Could not gift title");
+        return;
+      }
+      setNotice(`Gifted [${data.gift.name}] to ${data.user.username}.`);
+      setGiftUsername("");
+      setGiftTitle("");
+    } finally {
+      setGifting(false);
+    }
+  }
+
   function signOut() {
     localStorage.removeItem(TOKEN_KEY);
     setToken("");
@@ -370,6 +518,7 @@ export default function App() {
     setProfile(null);
     setView("feed");
     setComposing(false);
+    setGiftPopup(null);
   }
 
   if (loading) {
@@ -452,6 +601,10 @@ export default function App() {
     (sum, story) => sum + (story.upvoteCount || 0),
     0
   );
+  const catalog = profile?.catalog;
+  const unlockedAchievements = (catalog?.achievements || []).filter((t) => t.unlocked);
+  const lockedAchievements = (catalog?.achievements || []).filter((t) => !t.unlocked);
+  const giftTitles = catalog?.gifts || [];
 
   return (
     <Screen wide>
@@ -497,6 +650,29 @@ export default function App() {
           {error && !composing ? (
             <p className="clay-inset mb-6 px-5 py-3">{error}</p>
           ) : null}
+          {user.isAdmin ? (
+            <form
+              onSubmit={giftTitleToUser}
+              className="clay mb-6 flex flex-col gap-3 px-6 py-5 sm:flex-row sm:items-center"
+            >
+              <p className="shrink-0 text-sm text-clay-muted">Gift a title</p>
+              <input
+                value={giftUsername}
+                onChange={(event) => setGiftUsername(event.target.value)}
+                placeholder="username"
+                className="clay-inset min-w-0 flex-1 px-4 py-2"
+              />
+              <input
+                value={giftTitle}
+                onChange={(event) => setGiftTitle(event.target.value)}
+                placeholder="title name"
+                className="clay-inset min-w-0 flex-1 px-4 py-2"
+              />
+              <ClayButton type="submit" accent disabled={gifting}>
+                {gifting ? "Gifting…" : "Gift"}
+              </ClayButton>
+            </form>
+          ) : null}
           <div className="mb-6 flex gap-2">
             <ClayButton active={sort === "date"} onClick={() => setSort("date")}>
               Latest
@@ -508,7 +684,12 @@ export default function App() {
               Top
             </ClayButton>
           </div>
-          <StoryList stories={stories} onUpvote={upvoteStory} />
+          <StoryList
+            stories={stories}
+            onUpvote={upvoteStory}
+            onDelete={user.isAdmin ? deleteStory : undefined}
+            canDeleteAll={user.isAdmin}
+          />
         </section>
       ) : (
         <section className="mt-10">
@@ -516,14 +697,70 @@ export default function App() {
             <p className="clay-inset mb-6 px-5 py-3">{error}</p>
           ) : null}
           <div className="clay px-8 py-8">
-            <p className="text-3xl tracking-tight">{user.username}</p>
+            <AuthorLine username={user.username} title={user.title} />
             <p className="mt-2 text-clay-muted">{user.email}</p>
             <p className="mt-8 text-xl">
               {profile
                 ? `${receivedUpvotes} ${receivedUpvotes === 1 ? "upvote" : "upvotes"} received`
                 : "Loading…"}
             </p>
+            {profile ? (
+              <p className="mt-2 text-clay-muted">
+                {profile.postCount || 0}{" "}
+                {(profile.postCount || 0) === 1 ? "story" : "stories"} published
+              </p>
+            ) : null}
           </div>
+
+          {profile ? (
+            <div className="clay mt-6 px-8 py-8">
+              <p className="text-2xl tracking-tight">Your titles</p>
+              <p className="mt-2 text-clay-muted">
+                Choose what shows before your name on posts.
+              </p>
+
+              <div className="mt-6 flex flex-wrap gap-2">
+                <ClayButton
+                  active={!user.showTitle || !user.activeTitleId}
+                  onClick={() => selectTitle("none")}
+                >
+                  No title
+                </ClayButton>
+                {unlockedAchievements.map((title) => (
+                  <ClayButton
+                    key={title.id}
+                    active={user.activeTitleId === title.id}
+                    onClick={() => selectTitle(title.id)}
+                  >
+                    <TitleBadge title={title} />
+                  </ClayButton>
+                ))}
+                {giftTitles.map((title) => (
+                  <ClayButton
+                    key={title.id}
+                    active={user.activeTitleId === title.id}
+                    onClick={() => selectTitle(title.id)}
+                  >
+                    <TitleBadge title={title} />
+                  </ClayButton>
+                ))}
+              </div>
+
+              {lockedAchievements.length ? (
+                <div className="mt-8">
+                  <p className="text-sm text-clay-muted">Still locked</p>
+                  <ul className="mt-3 space-y-2 text-clay-muted">
+                    {lockedAchievements.map((title) => (
+                      <li key={title.id}>
+                        <TitleBadge title={title} /> — {title.requirement}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           {profile ? (
             <StoryList stories={profile.stories} onDelete={deleteStory} />
           ) : null}
@@ -571,11 +808,13 @@ export default function App() {
           </form>
         </div>
       ) : null}
+
+      <GiftPopup gift={giftPopup} onClose={ackGift} />
     </Screen>
   );
 }
 
-function StoryList({ stories, onUpvote, onDelete }) {
+function StoryList({ stories, onUpvote, onDelete, canDeleteAll = false }) {
   if (!stories.length) {
     return (
       <p className="clay mt-8 px-8 py-10 text-clay-muted">No stories yet.</p>
@@ -586,9 +825,11 @@ function StoryList({ stories, onUpvote, onDelete }) {
     <ul className="story-list mt-2 space-y-6">
       {stories.map((story) => (
         <li key={story.id} className="clay px-7 py-7">
-          <p className="text-sm text-clay-muted">
-            {story.authorUsername} · {formatDate(story.createdAt)}
-          </p>
+          <AuthorLine
+            username={story.authorUsername}
+            title={story.authorTitle}
+            createdAt={story.createdAt}
+          />
           <p className="mt-3 whitespace-pre-wrap text-lg leading-relaxed">
             {story.content}
           </p>
@@ -608,7 +849,9 @@ function StoryList({ stories, onUpvote, onDelete }) {
               </p>
             )}
             {onDelete ? (
-              <ClayButton onClick={() => onDelete(story.id)}>Delete</ClayButton>
+              <ClayButton onClick={() => onDelete(story.id)}>
+                {canDeleteAll ? "Delete" : "Delete"}
+              </ClayButton>
             ) : null}
           </div>
         </li>

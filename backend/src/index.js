@@ -9,6 +9,7 @@ import {
   normalizeUsername,
   postedToday,
   publicUser,
+  requireAdmin,
   requireAuth,
   requireUsername,
   signToken,
@@ -17,20 +18,48 @@ import {
 } from "./auth.js";
 import { groqApiKey, moderateStory } from "./moderate.js";
 import { communityStats, startCommunity } from "./community.js";
+import {
+  ADMIN_DISPLAY_NAME,
+  catalogForUser,
+  isAdmin,
+  ownedTitles,
+  resolveDisplayTitle,
+} from "./titles.js";
+import { authorTotals, newGiftId, syncUnlockedTitles } from "./userStats.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-function serializeStory(story, userId) {
+function serializeStory(story, userId, authorTitle = null) {
   const upvotes = (story.upvotes || []).map((id) => String(id));
   return {
     id: String(story._id),
+    authorId: String(story.authorId),
     authorUsername: story.authorUsername,
+    authorTitle,
     content: story.content,
     upvoteCount: upvotes.length,
     upvoted: userId ? upvotes.includes(String(userId)) : false,
     createdAt: story.createdAt,
   };
+}
+
+async function titlesByAuthorIds(authorIds) {
+  const unique = [...new Set(authorIds.map(String).filter(Boolean))];
+  if (!unique.length) return new Map();
+  const authors = await User.find({ _id: { $in: unique } });
+  const map = new Map();
+  for (const author of authors) {
+    map.set(String(author._id), resolveDisplayTitle(author));
+  }
+  return map;
+}
+
+async function serializeStories(stories, viewerId) {
+  const titleMap = await titlesByAuthorIds(stories.map((story) => story.authorId));
+  return stories.map((story) =>
+    serializeStory(story, viewerId, titleMap.get(String(story.authorId)) || null)
+  );
 }
 
 const allowedOrigins = [
@@ -120,7 +149,12 @@ app.post("/auth/google", async (req, res) => {
         googleId: payload.sub,
         email: payload.email,
       });
+    } else if (payload.email && user.email !== payload.email) {
+      user.email = payload.email;
+      await user.save();
     }
+
+    await syncUnlockedTitles(user);
 
     res.json({
       token: signToken(user),
@@ -135,6 +169,7 @@ app.post("/auth/google", async (req, res) => {
 });
 
 app.get("/auth/me", requireAuth, async (req, res) => {
+  await syncUnlockedTitles(req.user);
   res.json({
     user: publicUser(req.user),
     needsUsername: !req.user.username,
@@ -206,8 +241,11 @@ app.post("/stories", requireAuth, requireUsername, async (req, res) => {
 
     req.user.lastPostDate = new Date();
     await req.user.save();
+    await syncUnlockedTitles(req.user);
 
-    res.status(201).json({ story: serializeStory(story, req.user._id) });
+    res.status(201).json({
+      story: serializeStory(story, req.user._id, resolveDisplayTitle(req.user)),
+    });
   } catch (err) {
     console.error("Create story failed:", err.message);
     console.error(err);
@@ -243,7 +281,7 @@ app.get("/stories", requireAuth, async (req, res) => {
     ]);
     res.json({
       sort,
-      stories: stories.map((story) => serializeStory(story, req.user._id)),
+      stories: await serializeStories(stories, req.user._id),
       ...(await communityStats()),
     });
   } catch (err) {
@@ -264,7 +302,12 @@ app.post("/stories/:id/upvote", requireAuth, async (req, res) => {
 
     story.upvotes.push(req.user._id);
     await story.save();
-    res.json({ story: serializeStory(story, req.user._id) });
+
+    const author = await User.findById(story.authorId);
+    if (author) await syncUnlockedTitles(author);
+
+    const title = author ? resolveDisplayTitle(author) : null;
+    res.json({ story: serializeStory(story, req.user._id, title) });
   } catch (err) {
     if (err.name === "CastError") {
       return res.status(404).json({ error: "Story not found" });
@@ -280,17 +323,28 @@ app.delete("/stories/:id", requireAuth, async (req, res) => {
     if (!story) {
       return res.status(404).json({ error: "Story not found" });
     }
-    if (!story.authorId.equals(req.user._id)) {
+    const owner = story.authorId.equals(req.user._id);
+    if (!owner && !isAdmin(req.user)) {
       return res.status(403).json({ error: "You can only delete your own stories" });
     }
 
+    const authorId = story.authorId;
     await story.deleteOne();
 
-    const latest = await Story.findOne({ authorId: req.user._id }).sort({
-      createdAt: -1,
-    });
-    req.user.lastPostDate = latest ? latest.createdAt : null;
-    await req.user.save();
+    if (owner) {
+      const latest = await Story.findOne({ authorId: req.user._id }).sort({
+        createdAt: -1,
+      });
+      req.user.lastPostDate = latest ? latest.createdAt : null;
+      await req.user.save();
+    } else {
+      const author = await User.findById(authorId);
+      if (author) {
+        const latest = await Story.findOne({ authorId }).sort({ createdAt: -1 });
+        author.lastPostDate = latest ? latest.createdAt : null;
+        await author.save();
+      }
+    }
 
     res.json({ ok: true, id: req.params.id });
   } catch (err) {
@@ -304,21 +358,133 @@ app.delete("/stories/:id", requireAuth, async (req, res) => {
 
 app.get("/profile", requireAuth, async (req, res) => {
   try {
+    await syncUnlockedTitles(req.user);
     const stories = await Story.find({ authorId: req.user._id }).sort({
       createdAt: -1,
     });
-    const totalUpvotes = stories.reduce(
-      (sum, story) => sum + story.upvotes.length,
-      0
-    );
+    const { totalUpvotes, postCount } = await authorTotals(req.user._id);
     res.json({
       user: publicUser(req.user),
       totalUpvotes,
-      stories: stories.map((story) => serializeStory(story, req.user._id)),
+      postCount,
+      catalog: catalogForUser(req.user, totalUpvotes, postCount),
+      stories: await serializeStories(stories, req.user._id),
     });
   } catch (err) {
     console.error("Profile failed:", err.message);
     res.status(500).json({ error: "Could not load profile" });
+  }
+});
+
+app.put("/profile/title", requireAuth, async (req, res) => {
+  try {
+    await syncUnlockedTitles(req.user);
+    const { titleId, showTitle } = req.body || {};
+
+    if (typeof showTitle === "boolean") {
+      req.user.showTitle = showTitle;
+      if (!showTitle) {
+        req.user.activeTitleId = null;
+      }
+    }
+
+    if (titleId === null || titleId === "none" || titleId === "") {
+      req.user.activeTitleId = null;
+      req.user.showTitle = false;
+    } else if (typeof titleId === "string") {
+      const owned = ownedTitles(req.user);
+      if (!owned.some((title) => title.id === titleId)) {
+        return res.status(400).json({ error: "You do not own that title" });
+      }
+      req.user.activeTitleId = titleId;
+      req.user.showTitle = true;
+    }
+
+    await req.user.save();
+    const { totalUpvotes, postCount } = await authorTotals(req.user._id);
+    res.json({
+      user: publicUser(req.user),
+      catalog: catalogForUser(req.user, totalUpvotes, postCount),
+    });
+  } catch (err) {
+    console.error("Set title failed:", err.message);
+    res.status(500).json({ error: "Could not update title" });
+  }
+});
+
+app.post("/profile/gift/ack", requireAuth, async (req, res) => {
+  try {
+    const giftId = String(req.body?.giftId || "");
+    let changed = false;
+    for (const gift of req.user.giftedTitles || []) {
+      if (!giftId || gift.id === giftId) {
+        if (!gift.seen) {
+          gift.seen = true;
+          changed = true;
+        }
+      }
+    }
+    if (changed) await req.user.save();
+    res.json({ user: publicUser(req.user) });
+  } catch (err) {
+    console.error("Ack gift failed:", err.message);
+    res.status(500).json({ error: "Could not acknowledge gift" });
+  }
+});
+
+app.post("/admin/gift-title", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const username = normalizeUsername(req.body?.username);
+    const name = String(req.body?.name || "")
+      .trim()
+      .slice(0, 24);
+    if (!username) {
+      return res.status(400).json({ error: "Enter a valid username" });
+    }
+    if (!name || !/^[a-zA-Z0-9 _-]{2,24}$/.test(name)) {
+      return res.status(400).json({
+        error: "Title must be 2–24 letters, numbers, spaces, _ or -",
+      });
+    }
+
+    const target = await User.findOne({ username });
+    if (!target) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    if (target.isProxy) {
+      return res.status(400).json({ error: "Cannot gift titles to proxy users" });
+    }
+
+    const gift = {
+      id: newGiftId(),
+      name: name.toLowerCase(),
+      color: "#c56b4c",
+      giftedBy: ADMIN_DISPLAY_NAME,
+      giftedAt: new Date(),
+      seen: false,
+    };
+    target.giftedTitles = [...(target.giftedTitles || []), gift];
+    if (!target.activeTitleId && target.showTitle !== false) {
+      target.activeTitleId = gift.id;
+      target.showTitle = true;
+    }
+    await target.save();
+
+    res.json({
+      ok: true,
+      gift: {
+        id: gift.id,
+        name: gift.name,
+        kind: "gift",
+      },
+      user: {
+        username: target.username,
+        titles: ownedTitles(target),
+      },
+    });
+  } catch (err) {
+    console.error("Gift title failed:", err.message);
+    res.status(500).json({ error: "Could not gift title" });
   }
 });
 

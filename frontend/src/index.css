@@ -208,3 +208,88 @@ textarea.clay-inset::placeholder {
 .clay-btn-google svg {
   flex-shrink: 0;
 }
+
+.title-badge {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.title-badge-static {
+  color: #6b8f71;
+}
+
+.title-badge-gift {
+  background: linear-gradient(
+    120deg,
+    #c56b4c,
+    #b8860b,
+    #8b5a7a,
+    #4a6b8a,
+    #c56b4c
+  );
+  background-size: 220% 220%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: title-gift-flow 3.2s linear infinite;
+}
+
+@keyframes title-gift-flow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.gift-popup-overlay {
+  background: rgba(61, 52, 44, 0.28);
+  backdrop-filter: blur(2px);
+}
+
+.gift-popup {
+  min-height: 14rem;
+}
+
+.glitter-field {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.glitter-bit {
+  position: absolute;
+  top: -8%;
+  border-radius: 999px;
+  background: radial-gradient(circle, #fff8e8 0%, #f0c27a 45%, transparent 70%);
+  box-shadow: 0 0 8px rgba(255, 220, 150, 0.85);
+  animation-name: glitter-fall;
+  animation-timing-function: ease-in;
+  animation-iteration-count: infinite;
+  opacity: 0;
+}
+
+.glitter-bit:nth-child(3n) {
+  background: radial-gradient(circle, #fff 0%, #e8b4d8 50%, transparent 70%);
+}
+
+.glitter-bit:nth-child(4n) {
+  background: radial-gradient(circle, #fff 0%, #9ec6e8 50%, transparent 70%);
+}
+
+.glitter-bit:nth-child(5n) {
+  background: radial-gradient(circle, #fff 0%, #c56b4c 55%, transparent 70%);
+}
+
+@keyframes glitter-fall {
+  0% {
+    opacity: 0;
+    transform: translateY(0) rotate(0deg) scale(0.6);
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(320px) rotate(220deg) scale(1.1);
+  }
+}

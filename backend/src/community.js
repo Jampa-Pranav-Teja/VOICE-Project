@@ -16,7 +16,7 @@ const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 const MAX_PROXY_POSTS_PER_DAY = 4;
 const POST_INTERVAL_MS = 25 * 60 * 1000;
-const UPVOTE_INTERVAL_MS = 4 * 60 * 1000;
+const UPVOTE_INTERVAL_MS = 90 * 1000;
 
 let running = false;
 
@@ -169,9 +169,9 @@ async function maybeUpvote() {
   const stories = await Story.find().sort({ createdAt: -1 }).limit(50);
   if (!stories.length) return 0;
 
-  const votes = 1 + Math.floor(Math.random() * 3);
+  const votes = 2 + Math.floor(Math.random() * 4);
   let applied = 0;
-  const quieter = stories.filter((story) => (story.upvotes || []).length < 12);
+  const quieter = stories.filter((story) => (story.upvotes || []).length < 18);
   const pool = quieter.length ? quieter : stories;
 
   for (let i = 0; i < votes; i += 1) {

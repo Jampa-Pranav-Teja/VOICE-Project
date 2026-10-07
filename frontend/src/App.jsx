@@ -199,6 +199,7 @@ export default function App() {
   const [giftUsername, setGiftUsername] = useState("");
   const [giftTitle, setGiftTitle] = useState("");
   const [gifting, setGifting] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
 
   function applyStats(data) {
     if (typeof data?.totalUsers !== "number" && typeof data?.activeUsers !== "number") {
@@ -746,14 +747,9 @@ export default function App() {
                 {(profile.postCount || 0) === 1 ? "story" : "stories"} published
               </p>
             ) : null}
-            <a
-              className="clay-btn mt-8 inline-flex"
-              href={`mailto:voicesupportnow@gmail.com?subject=${encodeURIComponent(
-                `voice message from ${user.username}`
-              )}`}
-            >
+            <ClayButton className="mt-8" onClick={() => setSupportOpen(true)}>
               Message me
-            </a>
+            </ClayButton>
           </div>
 
           {profile ? (
@@ -854,6 +850,28 @@ export default function App() {
       ) : null}
 
       <GiftPopup gift={giftPopup} onClose={ackGift} />
+
+      {supportOpen ? (
+        <div
+          className="clay-overlay gift-popup-overlay fixed inset-0 z-30 flex items-center justify-center px-6"
+          onClick={() => setSupportOpen(false)}
+        >
+          <div
+            className="clay clay-enter w-full max-w-md px-8 py-10 text-center"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="text-2xl leading-snug">
+              For any queries or bugs mail to
+            </p>
+            <p className="mt-4 text-xl text-clay-accent">
+              voicesupportnow@gmail.com
+            </p>
+            <ClayButton className="mt-8" accent onClick={() => setSupportOpen(false)}>
+              Got it
+            </ClayButton>
+          </div>
+        </div>
+      ) : null}
     </Screen>
   );
 }

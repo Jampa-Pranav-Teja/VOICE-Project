@@ -1,5 +1,13 @@
 export const ADMIN_EMAIL = "pranavtejajampa@gmail.com";
 export const ADMIN_DISPLAY_NAME = "GrimEnding";
+export const OWNER_TITLE_ID = "owner";
+
+export const OWNER_TITLE = {
+  id: OWNER_TITLE_ID,
+  name: "owner",
+  color: "#d4af37",
+  kind: "owner",
+};
 
 export const ACHIEVEMENT_TITLES = [
   {
@@ -67,6 +75,11 @@ export function unlockedAchievementIds(totalUpvotes, postCount) {
   ).map((title) => title.id);
 }
 
+export function titleKindForGift(gift) {
+  if (gift?.id === OWNER_TITLE_ID || gift?.kind === "owner") return "owner";
+  return "gift";
+}
+
 export function ownedTitles(user) {
   const list = [];
   for (const id of user.unlockedTitleIds || []) {
@@ -81,12 +94,16 @@ export function ownedTitles(user) {
     }
   }
   for (const gift of user.giftedTitles || []) {
+    const kind = titleKindForGift(gift);
     list.push({
       id: gift.id,
       name: gift.name,
-      color: gift.color || "#c56b4c",
-      kind: "gift",
+      color: gift.color || (kind === "owner" ? OWNER_TITLE.color : "#c56b4c"),
+      kind,
     });
+  }
+  if (isAdmin(user) && !list.some((title) => title.id === OWNER_TITLE_ID)) {
+    list.unshift({ ...OWNER_TITLE });
   }
   return list;
 }
@@ -103,14 +120,19 @@ export function pendingGift(user) {
   return {
     id: gift.id,
     name: gift.name,
+    kind: titleKindForGift(gift),
     from: ADMIN_DISPLAY_NAME,
   };
 }
 
 export function catalogForUser(user, totalUpvotes = 0, postCount = 0) {
-  const owned = new Set((user.unlockedTitleIds || []).concat(
-    (user.giftedTitles || []).map((g) => g.id)
-  ));
+  const owned = new Set(
+    (user.unlockedTitleIds || []).concat((user.giftedTitles || []).map((g) => g.id))
+  );
+  if (isAdmin(user)) {
+    for (const title of ACHIEVEMENT_TITLES) owned.add(title.id);
+    owned.add(OWNER_TITLE_ID);
+  }
   return {
     achievements: ACHIEVEMENT_TITLES.map((title) => ({
       id: title.id,
@@ -131,12 +153,19 @@ export function catalogForUser(user, totalUpvotes = 0, postCount = 0) {
         needPosts: title.minPosts,
       },
     })),
-    gifts: (user.giftedTitles || []).map((gift) => ({
-      id: gift.id,
-      name: gift.name,
-      color: gift.color || "#c56b4c",
-      kind: "gift",
-      unlocked: true,
-    })),
+    gifts: [
+      ...(isAdmin(user) || owned.has(OWNER_TITLE_ID)
+        ? [{ ...OWNER_TITLE, unlocked: true }]
+        : []),
+      ...(user.giftedTitles || [])
+        .filter((gift) => gift.id !== OWNER_TITLE_ID)
+        .map((gift) => ({
+          id: gift.id,
+          name: gift.name,
+          color: gift.color || "#c56b4c",
+          kind: "gift",
+          unlocked: true,
+        })),
+    ],
   };
 }

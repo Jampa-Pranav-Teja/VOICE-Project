@@ -234,10 +234,35 @@ textarea.clay-inset::placeholder {
   animation: title-gift-flow 3.2s linear infinite;
 }
 
+.title-badge-owner {
+  background: linear-gradient(
+    110deg,
+    #fff4c2,
+    #ffe08a,
+    #d4af37,
+    #f7e7a1,
+    #b8860b,
+    #fff1a8,
+    #d4af37
+  );
+  background-size: 280% 280%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: title-owner-flow 2.4s linear infinite;
+  filter: drop-shadow(0 0 0.35rem rgba(212, 175, 55, 0.45));
+}
+
 @keyframes title-gift-flow {
   0% { background-position: 0% 50%; }
   50% { background-position: 100% 50%; }
   100% { background-position: 0% 50%; }
+}
+
+@keyframes title-owner-flow {
+  0% { background-position: 0% 40%; }
+  50% { background-position: 100% 60%; }
+  100% { background-position: 0% 40%; }
 }
 
 .gift-popup-overlay {

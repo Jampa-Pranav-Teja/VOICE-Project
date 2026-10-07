@@ -56,13 +56,19 @@ function ClayButton({
 
 function TitleBadge({ title, className = "" }) {
   if (!title?.name) return null;
+  const isOwner = title.kind === "owner" || title.id === "owner";
   const isGift = title.kind === "gift";
+  const tone = isOwner
+    ? "title-badge-owner"
+    : isGift
+      ? "title-badge-gift"
+      : "title-badge-static";
   return (
     <span
-      className={`title-badge ${isGift ? "title-badge-gift" : "title-badge-static"} ${className}`}
-      style={isGift ? undefined : { color: title.color || "#6b8f71" }}
+      className={`title-badge ${tone} ${className}`}
+      style={isOwner || isGift ? undefined : { color: title.color || "#6b8f71" }}
     >
-      [{title.name}]
+      {isOwner ? "👑 " : null}[{title.name}]
     </span>
   );
 }

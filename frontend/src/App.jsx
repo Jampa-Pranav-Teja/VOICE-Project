@@ -746,6 +746,14 @@ export default function App() {
                 {(profile.postCount || 0) === 1 ? "story" : "stories"} published
               </p>
             ) : null}
+            <a
+              className="clay-btn mt-8 inline-flex"
+              href={`mailto:voicesupportnow@gmail.com?subject=${encodeURIComponent(
+                `voice message from ${user.username}`
+              )}`}
+            >
+              Message me
+            </a>
           </div>
 
           {profile ? (

@@ -226,6 +226,91 @@ function AdminReplyPopup({ reply, onClose }) {
   );
 }
 
+function TakedownPopup({ notice, onClose }) {
+  if (!notice) return null;
+  return (
+    <div className="clay-overlay gift-popup-overlay fixed inset-0 z-30 flex items-center justify-center px-6">
+      <div className="clay clay-enter gift-popup relative w-full max-w-md overflow-hidden px-8 py-10">
+        <GlitterBurst />
+        <p className="relative z-10 text-sm tracking-wide text-clay-muted">
+          Story taken down
+        </p>
+        <p className="relative z-10 mt-5 text-2xl leading-snug">
+          GrimmyEnding removed your story for this reason:
+        </p>
+        <p className="relative z-10 mt-4 whitespace-pre-wrap text-xl">
+          {notice.reason}
+        </p>
+        {notice.storyPreview ? (
+          <p className="relative z-10 mt-6 text-sm text-clay-muted">
+            “{notice.storyPreview}
+            {notice.storyPreview.length >= 180 ? "…" : ""}”
+          </p>
+        ) : null}
+        <ClayButton accent className="relative z-10 mt-8" onClick={onClose}>
+          Got it
+        </ClayButton>
+      </div>
+    </div>
+  );
+}
+
+function DeleteReasonModal({ open, onCancel, onConfirm }) {
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) setReason("");
+  }, [open]);
+
+  if (!open) return null;
+
+  async function submit(event) {
+    event.preventDefault();
+    if (!reason.trim()) return;
+    setSaving(true);
+    try {
+      await onConfirm(reason.trim());
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="clay-overlay gift-popup-overlay fixed inset-0 z-40 flex items-center justify-center px-6"
+      onClick={onCancel}
+    >
+      <form
+        onSubmit={submit}
+        onClick={(event) => event.stopPropagation()}
+        className="clay clay-enter w-full max-w-md px-8 py-8"
+      >
+        <p className="text-2xl tracking-tight">Take down this story</p>
+        <p className="mt-2 text-clay-muted">
+          Tell them why. They’ll see this once when they open voice.
+        </p>
+        <textarea
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          maxLength={2000}
+          autoFocus
+          placeholder="Reason for removal"
+          className="clay-inset mt-6 h-32 w-full resize-y p-4"
+        />
+        <div className="mt-6 flex justify-end gap-2">
+          <ClayButton type="button" disabled={saving} onClick={onCancel}>
+            Cancel
+          </ClayButton>
+          <ClayButton type="submit" accent disabled={saving || !reason.trim()}>
+            {saving ? "Removing…" : "Remove story"}
+          </ClayButton>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function GoogleClayButton({ onSuccess, onError }) {
   const login = useGoogleLogin({
     onSuccess: (tokenResponse) =>
@@ -284,6 +369,8 @@ export default function App() {
   const [messaging, setMessaging] = useState(false);
   const [messagePopup, setMessagePopup] = useState(null);
   const [replyPopup, setReplyPopup] = useState(null);
+  const [takedownPopup, setTakedownPopup] = useState(null);
+  const [deleteTargetId, setDeleteTargetId] = useState(null);
   const [supportOpen, setSupportOpen] = useState(false);
 
   function applyStats(data) {
@@ -300,11 +387,19 @@ export default function App() {
   function applyPending(nextUser, extras = {}) {
     if (nextUser?.pendingGift) {
       setGiftPopup(nextUser.pendingGift);
+      setTakedownPopup(null);
       setMessagePopup(null);
       setReplyPopup(null);
       return;
     }
     setGiftPopup(null);
+    if (nextUser?.pendingTakedown) {
+      setTakedownPopup(nextUser.pendingTakedown);
+      setMessagePopup(null);
+      setReplyPopup(null);
+      return;
+    }
+    setTakedownPopup(null);
     if (nextUser?.pendingMessage) {
       setMessagePopup(nextUser.pendingMessage);
       setReplyPopup(null);
@@ -324,10 +419,19 @@ export default function App() {
       setGiftPopup(user.pendingGift);
       return;
     }
+    if (user.pendingTakedown) {
+      setTakedownPopup(user.pendingTakedown);
+      return;
+    }
     if (user.pendingMessage) {
       setMessagePopup(user.pendingMessage);
     }
-  }, [user?.pendingGift?.id, user?.pendingGift?.name, user?.pendingMessage?.id]);
+  }, [
+    user?.pendingGift?.id,
+    user?.pendingGift?.name,
+    user?.pendingTakedown?.id,
+    user?.pendingMessage?.id,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -520,18 +624,32 @@ export default function App() {
     }
   }
 
-  async function deleteStory(id) {
+  function requestDeleteStory(id) {
+    const story = stories.find((item) => item.id === id) ||
+      profile?.stories?.find((item) => item.id === id);
+    const deletingOthers =
+      user?.isAdmin && story && story.authorId && story.authorId !== user.id;
+    if (deletingOthers) {
+      setDeleteTargetId(id);
+      return;
+    }
     if (!window.confirm("Delete this story? This cannot be undone.")) return;
+    deleteStory(id);
+  }
+
+  async function deleteStory(id, reason = "") {
     setError("");
     const res = await fetch(`${API}/stories/${id}`, {
       method: "DELETE",
       headers: authHeaders(token),
+      body: JSON.stringify(reason ? { reason } : {}),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       setError(data.error || "Could not delete story");
       return;
     }
+    setDeleteTargetId(null);
     setStories((current) => current.filter((story) => story.id !== id));
     setProfile((current) => {
       if (!current) return current;
@@ -545,6 +663,26 @@ export default function App() {
         ),
       };
     });
+    if (reason) setNotice("Story removed. They’ll see your reason next time they open voice.");
+  }
+
+  async function ackTakedown() {
+    const noticeId = takedownPopup?.id;
+    if (!noticeId || !token) {
+      setTakedownPopup(null);
+      return;
+    }
+    const res = await fetch(`${API}/takedowns/${noticeId}/ack`, {
+      method: "POST",
+      headers: authHeaders(token),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(data.error || "Could not close notice");
+      return;
+    }
+    if (data.user) setUser(data.user);
+    applyPending(data.user, data);
   }
 
   async function upvoteStory(id) {
@@ -730,6 +868,8 @@ export default function App() {
     setGiftPopup(null);
     setMessagePopup(null);
     setReplyPopup(null);
+    setTakedownPopup(null);
+    setDeleteTargetId(null);
   }
 
   if (loading) {
@@ -924,7 +1064,7 @@ export default function App() {
           <StoryList
             stories={stories}
             onUpvote={upvoteStory}
-            onDelete={user.isAdmin ? deleteStory : undefined}
+            onDelete={user.isAdmin ? requestDeleteStory : undefined}
             canDeleteAll={user.isAdmin}
           />
         </section>
@@ -1002,7 +1142,7 @@ export default function App() {
           ) : null}
 
           {profile ? (
-            <StoryList stories={profile.stories} onDelete={deleteStory} />
+            <StoryList stories={profile.stories} onDelete={requestDeleteStory} />
           ) : null}
         </section>
       )}
@@ -1051,11 +1191,20 @@ export default function App() {
 
       <GiftPopup gift={giftPopup} onClose={ackGift} />
       {!giftPopup ? (
+        <TakedownPopup notice={takedownPopup} onClose={ackTakedown} />
+      ) : null}
+      {!giftPopup && !takedownPopup ? (
         <AdminMessagePopup message={messagePopup} onClose={respondToMessage} />
       ) : null}
-      {!giftPopup && !messagePopup ? (
+      {!giftPopup && !takedownPopup && !messagePopup ? (
         <AdminReplyPopup reply={replyPopup} onClose={ackAdminReply} />
       ) : null}
+
+      <DeleteReasonModal
+        open={Boolean(deleteTargetId)}
+        onCancel={() => setDeleteTargetId(null)}
+        onConfirm={(reason) => deleteStory(deleteTargetId, reason)}
+      />
 
       {supportOpen ? (
         <div

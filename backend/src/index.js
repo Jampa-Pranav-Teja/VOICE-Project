@@ -31,6 +31,7 @@ import {
   newMessageId,
   pendingReplyForAdmin,
 } from "./messages.js";
+import { randomBytes } from "crypto";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -342,6 +343,16 @@ app.delete("/stories/:id", requireAuth, async (req, res) => {
     }
 
     const authorId = story.authorId;
+    const storyPreview = String(story.content || "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .slice(0, 180);
+    const reason = String(req.body?.reason || "").trim().slice(0, 2000);
+
+    if (!owner && isAdmin(req.user) && (!reason || reason.length < 2)) {
+      return res.status(400).json({ error: "Add a reason for taking this story down" });
+    }
+
     await story.deleteOne();
 
     if (owner) {
@@ -355,6 +366,16 @@ app.delete("/stories/:id", requireAuth, async (req, res) => {
       if (author) {
         const latest = await Story.findOne({ authorId }).sort({ createdAt: -1 });
         author.lastPostDate = latest ? latest.createdAt : null;
+        author.takedownNotices = [
+          ...(author.takedownNotices || []),
+          {
+            id: `td_${randomBytes(6).toString("hex")}`,
+            reason,
+            storyPreview,
+            createdAt: new Date(),
+            seen: false,
+          },
+        ];
         await author.save();
       }
     }
@@ -366,6 +387,29 @@ app.delete("/stories/:id", requireAuth, async (req, res) => {
     }
     console.error("Delete story failed:", err.message);
     res.status(500).json({ error: "Could not delete story" });
+  }
+});
+
+app.post("/takedowns/:id/ack", requireAuth, async (req, res) => {
+  try {
+    const noticeId = String(req.params.id || "");
+    const notice = (req.user.takedownNotices || []).find(
+      (item) => item.id === noticeId
+    );
+    if (!notice) {
+      return res.status(404).json({ error: "Notice not found" });
+    }
+    if (!notice.seen) {
+      notice.seen = true;
+      await req.user.save();
+    }
+    res.json({
+      user: publicUser(req.user),
+      ...(await authExtras(req.user)),
+    });
+  } catch (err) {
+    console.error("Ack takedown failed:", err.message);
+    res.status(500).json({ error: "Could not close notice" });
   }
 });
 

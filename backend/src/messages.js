@@ -17,6 +17,17 @@ export function pendingMessage(user) {
   };
 }
 
+export function pendingTakedown(user) {
+  if (isAdmin(user)) return null;
+  const notice = (user.takedownNotices || []).find((item) => !item.seen);
+  if (!notice) return null;
+  return {
+    id: notice.id,
+    reason: notice.reason,
+    storyPreview: notice.storyPreview || "",
+  };
+}
+
 export async function pendingReplyForAdmin(adminUser) {
   if (!isAdmin(adminUser)) return null;
   const user = await User.findOne({
